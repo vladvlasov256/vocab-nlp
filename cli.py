@@ -4,6 +4,7 @@ import logging
 import os
 import sys
 import warnings
+from pathlib import Path
 
 os.environ["TQDM_DISABLE"] = "1"
 warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -65,13 +66,28 @@ class LevelPicker(ModalScreen[str]):
         self.dismiss(str(event.option.prompt))
 
 
+HISTORY_FILE = Path.home() / ".local" / "share" / "vocab-nlp" / "history.txt"
+MAX_HISTORY = 100
+
+
 class HistoryInput(Input):
-    """Input with history (up/down) and key passthrough for app bindings."""
+    """Input with history (up/down) and persistent storage."""
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.history: list[str] = []
+        self.history: list[str] = self._load_history()
         self.history_index: int = -1
+
+    @staticmethod
+    def _load_history() -> list[str]:
+        if HISTORY_FILE.exists():
+            lines = HISTORY_FILE.read_text().strip().splitlines()
+            return lines[:MAX_HISTORY]
+        return []
+
+    def _save_history(self) -> None:
+        HISTORY_FILE.parent.mkdir(parents=True, exist_ok=True)
+        HISTORY_FILE.write_text("\n".join(self.history[:MAX_HISTORY]))
 
     BINDINGS = [
         Binding("ctrl+e", "app.set_level", "Level", priority=True),
@@ -102,6 +118,7 @@ class HistoryInput(Input):
         if text and (not self.history or self.history[0] != text):
             self.history.insert(0, text)
         self.history_index = -1
+        self._save_history()
 
 
 class VocabApp(App):
