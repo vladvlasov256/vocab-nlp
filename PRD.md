@@ -49,7 +49,7 @@ The microservice loads all active language models at init time into a single con
 
 The microservice handles Steps 1-2. Step 3 stays in the bot's existing LLM flow.
 
-### Step 0: Text Trimming
+### Step 0: Text Trimming ✅
 
 The service must aggressively trim input text before NLP processing to minimize latency and noise:
 
@@ -114,7 +114,7 @@ This step already exists in the bot. The microservice only provides better input
 ### Request
 
 ```
-POST /extract_lemmas
+POST /extract
 Content-Type: application/json
 
 {
@@ -199,7 +199,7 @@ The bot calls the microservice during lesson generation (reading/listening tasks
 ```
 1. Fetch news article
 2. LLM adapts text to A2 level
-3. POST /extract_lemmas with adapted text  ← NEW
+3. POST /extract with adapted text  ← NEW
 4. LLM generates vocabulary using candidate list  ← IMPROVED (was: from scratch)
 5. Present vocabulary to user
 ```

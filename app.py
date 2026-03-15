@@ -1,7 +1,16 @@
 import os
+import re
 
 import modal
 from fastapi import Header, HTTPException
+
+MAX_TEXT_BYTES = 4096
+
+
+def trim_text(text: str) -> str:
+    """Step 0: Collapse whitespace and cap length."""
+    text = re.sub(r"\s+", " ", text).strip()
+    return text[:MAX_TEXT_BYTES]
 
 app = modal.App("vocab-nlp")
 
@@ -49,6 +58,9 @@ def extract(request_data: dict, authorization: str = Header()):
         return {"error": "'text' is required"}
     if lang not in ("nl", "sr"):
         return {"error": f"Unsupported language '{lang}'. Supported: ['nl', 'sr']"}
+
+    # Step 0: Trim text
+    text = trim_text(text)
 
     doc = _get_pipeline(lang)(text)
 
