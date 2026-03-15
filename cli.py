@@ -1,64 +1,96 @@
 """Interactive CLI for testing the extract pipeline locally."""
 
+import logging
 import sys
+
+from rich.console import Console
+from rich.prompt import Prompt, FloatPrompt
+from rich.table import Table
 
 import stanza
 
 from pipeline import FREQ_LOADERS, LANGUAGES, PROCESSORS, extract, trim_text
 
-
-def print_result(result):
-    print(f"\n  {'LEMMA':<25} {'POS':<6} {'WEIGHT':>6}  {'A2'}")
-    print(f"  {'─' * 25} {'─' * 6} {'─' * 6}  {'─' * 3}")
-    for item in result["lemmas"]:
-        a2 = "✓" if item["is_a2"] else ""
-        print(f"  {item['text']:<25} {item['pos']:<6} {item['weight']:>6.2f}  {a2}")
-    print()
+console = Console()
 
 
-def print_tokens(doc):
-    print(f"\n  {'TOKEN':<15} {'LEMMA':<15} {'POS':<6} {'DEPREL':<15} {'HEAD'}")
-    print(f"  {'─' * 15} {'─' * 15} {'─' * 6} {'─' * 15} {'─' * 15}")
+def show_tokens(doc):
+    table = Table(title="Tokens", show_lines=False, pad_edge=False)
+    table.add_column("Token", style="cyan")
+    table.add_column("Lemma", style="green")
+    table.add_column("POS", style="yellow")
+    table.add_column("Deprel", style="magenta")
+    table.add_column("Head", style="dim")
+
     for sent in doc.sentences:
         for word in sent.words:
             head_text = next((w.text for w in sent.words if w.id == word.head), "ROOT")
-            print(f"  {word.text:<15} {word.lemma:<15} {word.upos:<6} {word.deprel:<15} {head_text}")
-        print()
+            table.add_row(word.text, word.lemma, word.upos, word.deprel, head_text)
+        table.add_section()
+
+    console.print(table)
+
+
+def show_result(result):
+    table = Table(title="Vocabulary Candidates", show_lines=False, pad_edge=False)
+    table.add_column("Lemma", style="bold")
+    table.add_column("POS", style="yellow")
+    table.add_column("Weight", justify="right", style="cyan")
+    table.add_column("A2", justify="center")
+
+    for item in result["lemmas"]:
+        a2 = "[green]✓[/green]" if item["is_a2"] else ""
+        w = item["weight"]
+        weight_style = "green" if w >= 0.9 else "yellow" if w >= 0.6 else "red"
+        table.add_row(
+            item["text"],
+            item["pos"],
+            f"[{weight_style}]{w:.2f}[/{weight_style}]",
+            a2,
+        )
+
+    console.print(table)
 
 
 def main():
     lang = sys.argv[1] if len(sys.argv) > 1 else None
-    while lang not in LANGUAGES:
-        lang = input(f"Language ({', '.join(LANGUAGES)}): ").strip()
+    if lang not in LANGUAGES:
+        lang = Prompt.ask("Language", choices=LANGUAGES)
 
-    import logging
+    threshold = FloatPrompt.ask("Weight threshold", default=0.5)
+
     logging.getLogger("stanza").setLevel(logging.WARNING)
 
-    print(f"[1/3] Downloading {lang} model...", flush=True)
-    stanza.download(lang, processors=PROCESSORS, verbose=False)
-    print(f"[2/3] Loading Stanza pipeline...", flush=True)
-    nlp = stanza.Pipeline(lang, processors=PROCESSORS, use_gpu=False, logging_level="WARN")
-    print(f"[3/3] Loading frequency list...", flush=True)
-    freq = FREQ_LOADERS[lang]()
-    print(f"Ready. {len(freq)} frequency entries.\n")
+    with console.status("[bold]Downloading model..."):
+        stanza.download(lang, processors=PROCESSORS, verbose=False)
+
+    with console.status("[bold]Loading Stanza pipeline..."):
+        nlp = stanza.Pipeline(lang, processors=PROCESSORS, use_gpu=False, logging_level="WARN")
+
+    with console.status("[bold]Loading frequency list..."):
+        freq = FREQ_LOADERS[lang]()
+
+    console.print(f"[green]Ready.[/green] {len(freq)} frequency entries.\n")
 
     while True:
         try:
-            text = input("> ").strip()
+            text = Prompt.ask("[bold]Text[/bold]")
         except (EOFError, KeyboardInterrupt):
-            print()
+            console.print("\nBye!")
             break
 
-        if not text:
+        if not text.strip():
             continue
 
         text = trim_text(text)
         doc = nlp(text)
 
-        print_tokens(doc)
+        show_tokens(doc)
+        console.print()
 
-        result = extract(doc, lang, freq)
-        print_result(result)
+        result = extract(doc, lang, freq, threshold=threshold)
+        show_result(result)
+        console.print()
 
 
 if __name__ == "__main__":

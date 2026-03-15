@@ -99,7 +99,7 @@ def extract_noun_chunks(sent) -> list[dict]:
     return chunks
 
 
-def extract(doc, lang: str, freq: dict[str, int]) -> dict:
+def extract(doc, lang: str, freq: dict[str, int], threshold: float = 0.5) -> dict:
     """Run Steps 1-2 on a Stanza doc. Returns the response dict."""
     candidates = []
 
@@ -130,7 +130,7 @@ def extract(doc, lang: str, freq: dict[str, int]) -> dict:
         item["is_a2"] = rank is not None and rank <= A2_RANK_CUTOFF
 
     # Filter and sort
-    unique = [item for item in unique if item["weight"] > 0.5]
+    unique = [item for item in unique if item["weight"] > threshold]
     unique.sort(key=lambda x: x["weight"], reverse=True)
 
     return {"language": lang, "lemmas": unique[:MAX_LEMMAS]}
