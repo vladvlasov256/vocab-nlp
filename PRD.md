@@ -239,6 +239,7 @@ bench/baseline/nl_a0_01.json   # {"lemmas": ["geld", "huis", ...]}
 3. Send both to a judge LLM (Claude) with the prompt:
    > "Given this A1 Dutch text, which vocabulary list is better for an A1 learner? Score each list 1-5 on: relevance, coverage, noise (false picks)."
 4. Output a summary table: text, level, our score, LLM score, delta
+5. Aggregate: **mean delta per level** (pipeline − LLM) + overall mean. Report Cohen's d (`mean(delta) / std(delta)`) as the single quality metric
 
 ### Usage
 

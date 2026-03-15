@@ -1,0 +1,246 @@
+"""Benchmark: compare our pipeline vs LLM baseline using a judge LLM."""
+
+import argparse
+import json
+import logging
+import os
+import sys
+import warnings
+from pathlib import Path
+from statistics import mean, stdev
+
+os.environ["TQDM_DISABLE"] = "1"
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+
+from dotenv import load_dotenv
+from openai import OpenAI
+from rich.console import Console
+from rich.table import Table
+
+import stanza
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from pipeline import FREQ_LOADERS, PROCESSORS, extract, trim_text
+
+BENCH_DIR = Path(__file__).resolve().parent
+TEXTS_DIR = BENCH_DIR / "texts"
+BASELINE_DIR = BENCH_DIR / "baseline"
+
+JUDGE_MODEL = "gpt-4.1"
+
+JUDGE_PROMPT = """\
+You are evaluating vocabulary lists extracted from a short Dutch text for a {level} language learner.
+
+## Text
+{text}
+
+## List A (pipeline)
+{list_a}
+
+## List B (LLM baseline)
+{list_b}
+
+Score each list 1-5 on:
+- **Relevance**: Are the words useful for a {level} learner? (not too easy, not too hard)
+- **Coverage**: Does the list capture the important vocabulary from the text?
+- **Noise**: Are there false picks — trivial words, proper nouns, or words that don't need teaching?
+
+Respond with ONLY valid JSON, no markdown:
+{{"score_a": <int 1-5>, "score_b": <int 1-5>, "reasoning": "<1-2 sentences>"}}
+"""
+
+
+def discover_texts(lang: str | None = None, level: str | None = None) -> list[dict]:
+    """Find all text/baseline pairs matching filters."""
+    texts = []
+    for txt_path in sorted(TEXTS_DIR.glob("*.txt")):
+        name = txt_path.stem  # e.g. nl_a0_01
+        parts = name.split("_")
+        if len(parts) != 3:
+            continue
+        t_lang, t_level, t_num = parts[0], parts[1].upper(), parts[2]
+
+        if lang and t_lang != lang:
+            continue
+        if level and t_level != level:
+            continue
+
+        baseline_path = BASELINE_DIR / f"{name}.json"
+        if not baseline_path.exists():
+            continue
+
+        texts.append({
+            "name": name,
+            "lang": t_lang,
+            "level": t_level,
+            "text_path": txt_path,
+            "baseline_path": baseline_path,
+        })
+    return texts
+
+
+def run_pipeline(text: str, lang: str, level: str, nlp, freq) -> list[str]:
+    """Run our extraction pipeline, return lemma list."""
+    trimmed = trim_text(text)
+    doc = nlp(trimmed)
+    result = extract(doc, lang, freq, level=level)
+    # Filter same as API: weight > 0.5, top 15
+    lemmas = [item["text"] for item in result["lemmas"] if item["weight"] > 0.5][:15]
+    return lemmas
+
+
+def judge(client: OpenAI, text: str, level: str, pipeline_lemmas: list[str], baseline_lemmas: list[str]) -> dict:
+    """Ask judge LLM to score both lists."""
+    prompt = JUDGE_PROMPT.format(
+        level=level,
+        text=text,
+        list_a=", ".join(pipeline_lemmas),
+        list_b=", ".join(baseline_lemmas),
+    )
+    response = client.chat.completions.create(
+        model=JUDGE_MODEL,
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0,
+    )
+    content = response.choices[0].message.content.strip()
+    return json.loads(content)
+
+
+def main():
+    load_dotenv()
+
+    parser = argparse.ArgumentParser(description="Run vocab-nlp benchmark")
+    parser.add_argument("--level", type=str, help="Filter by level (A0, A1, A2)")
+    parser.add_argument("--lang", type=str, help="Filter by language (nl, sr)")
+    args = parser.parse_args()
+
+    level_filter = args.level.upper() if args.level else None
+    lang_filter = args.lang if args.lang else None
+
+    texts = discover_texts(lang=lang_filter, level=level_filter)
+    if not texts:
+        print("No matching texts found.")
+        return
+
+    console = Console()
+    console.print(f"[dim]Found {len(texts)} texts to evaluate[/dim]")
+
+    # Load pipeline resources per language
+    pipelines = {}
+    freq_data = {}
+
+    logging.getLogger("stanza").setLevel(logging.WARNING)
+
+    for entry in texts:
+        lang = entry["lang"]
+        if lang not in pipelines:
+            console.print(f"[dim]Loading {lang} pipeline...[/dim]")
+            stanza.download(lang, processors=PROCESSORS, verbose=False)
+            pipelines[lang] = stanza.Pipeline(lang, processors=PROCESSORS, use_gpu=False, logging_level="WARN")
+            freq_data[lang] = FREQ_LOADERS[lang]()
+
+    # Judge LLM
+    client = OpenAI()
+    console.print(f"[dim]Judge model: {JUDGE_MODEL}[/dim]\n")
+
+    # Run evaluations
+    results = []
+    for entry in texts:
+        text = entry["text_path"].read_text().strip()
+        baseline = json.loads(entry["baseline_path"].read_text())
+        baseline_lemmas = baseline["lemmas"]
+
+        nlp = pipelines[entry["lang"]]
+        freq = freq_data[entry["lang"]]
+
+        pipeline_lemmas = run_pipeline(text, entry["lang"], entry["level"], nlp, freq)
+
+        console.print(f"[dim]Judging {entry['name']}...[/dim]")
+        scores = judge(client, text, entry["level"], pipeline_lemmas, baseline_lemmas)
+
+        results.append({
+            "name": entry["name"],
+            "level": entry["level"],
+            "pipeline_lemmas": pipeline_lemmas,
+            "baseline_lemmas": baseline_lemmas,
+            "score_a": scores["score_a"],
+            "score_b": scores["score_b"],
+            "delta": scores["score_a"] - scores["score_b"],
+            "reasoning": scores["reasoning"],
+        })
+
+    # Results table
+    table = Table(title="Benchmark Results")
+    table.add_column("Text")
+    table.add_column("Level")
+    table.add_column("Pipeline", justify="right")
+    table.add_column("LLM", justify="right")
+    table.add_column("Delta", justify="right")
+    table.add_column("Reasoning")
+
+    for r in results:
+        d = r["delta"]
+        delta_style = "green" if d > 0 else "red" if d < 0 else "dim"
+        table.add_row(
+            r["name"],
+            r["level"],
+            str(r["score_a"]),
+            str(r["score_b"]),
+            f"[{delta_style}]{d:+d}[/{delta_style}]",
+            r["reasoning"],
+        )
+
+    console.print(table)
+
+    # Aggregates per level
+    console.print()
+    levels_seen = sorted(set(r["level"] for r in results))
+    agg_table = Table(title="Mean Delta per Level")
+    agg_table.add_column("Level")
+    agg_table.add_column("Pipeline avg", justify="right")
+    agg_table.add_column("LLM avg", justify="right")
+    agg_table.add_column("Delta", justify="right")
+    agg_table.add_column("n", justify="right")
+
+    all_deltas = [r["delta"] for r in results]
+
+    for level in levels_seen:
+        level_results = [r for r in results if r["level"] == level]
+        avg_a = mean(r["score_a"] for r in level_results)
+        avg_b = mean(r["score_b"] for r in level_results)
+        delta = mean(r["delta"] for r in level_results)
+        delta_style = "green" if delta > 0 else "red" if delta < 0 else "dim"
+        agg_table.add_row(
+            level,
+            f"{avg_a:.1f}",
+            f"{avg_b:.1f}",
+            f"[{delta_style}]{delta:+.2f}[/{delta_style}]",
+            str(len(level_results)),
+        )
+
+    # Overall
+    avg_a = mean(r["score_a"] for r in results)
+    avg_b = mean(r["score_b"] for r in results)
+    delta = mean(all_deltas)
+    delta_style = "green" if delta > 0 else "red" if delta < 0 else "dim"
+    agg_table.add_section()
+    agg_table.add_row(
+        "[bold]Overall[/bold]",
+        f"[bold]{avg_a:.1f}[/bold]",
+        f"[bold]{avg_b:.1f}[/bold]",
+        f"[bold][{delta_style}]{delta:+.2f}[/{delta_style}][/bold]",
+        f"[bold]{len(results)}[/bold]",
+    )
+
+    console.print(agg_table)
+
+    # Cohen's d
+    if len(all_deltas) > 1:
+        d = mean(all_deltas) / stdev(all_deltas) if stdev(all_deltas) > 0 else float("inf")
+        console.print(f"\n[bold]Cohen's d: {d:.2f}[/bold]")
+    else:
+        console.print("\n[dim]Cohen's d: not enough data[/dim]")
+
+
+if __name__ == "__main__":
+    main()
