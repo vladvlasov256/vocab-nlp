@@ -7,6 +7,7 @@ from pipeline import (
     DATA_DIR,
     FREQ_LOADERS,
     LANGUAGES,
+    MAX_LEMMAS,
     PROCESSORS,
     extract,
     trim_text,
@@ -64,4 +65,7 @@ class VocabNlp:
 
         text = trim_text(text)
         doc = self.pipelines[lang](text)
-        return extract(doc, lang, self.freq[lang])
+        result = extract(doc, lang, self.freq[lang])
+        # Filter for API consumers
+        result["lemmas"] = [l for l in result["lemmas"] if l["weight"] > 0.5][:MAX_LEMMAS]
+        return result

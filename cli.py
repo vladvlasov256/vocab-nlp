@@ -13,6 +13,8 @@ import tqdm
 import tqdm.std
 tqdm.std.TqdmDefaultWriteLock.create_mp_lock = classmethod(lambda cls: setattr(cls, 'mp_lock', None))
 
+from rich.columns import Columns
+from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
@@ -114,26 +116,40 @@ class VocabApp(App):
         log.write(tokens_table)
         log.write("")
 
-        # Vocab table
-        result = extract(doc, self.lang, self.freq, threshold=self.threshold)
+        # Vocab tables
+        result = extract(doc, self.lang, self.freq)
+        all_lemmas = result["lemmas"]
 
-        if not result["lemmas"]:
-            log.write("[dim]No candidates above threshold.[/dim]\n")
-            return
+        above = [item for item in all_lemmas if item["weight"] > self.threshold]
+        below = [item for item in all_lemmas if item["weight"] <= self.threshold]
 
-        vocab_table = Table(show_lines=False, pad_edge=False, title="Vocabulary Candidates")
-        vocab_table.add_column("Lemma", style="bold")
-        vocab_table.add_column("POS", style="yellow")
-        vocab_table.add_column("Weight", justify="right")
-        vocab_table.add_column("A2", justify="center")
+        # Candidates panel
+        above_table = Table(show_lines=False, pad_edge=False, expand=True)
+        above_table.add_column("Lemma", style="bold")
+        above_table.add_column("POS", style="yellow")
+        above_table.add_column("Weight", justify="right")
 
-        for item in result["lemmas"]:
-            a2 = "✓" if item["is_a2"] else ""
+        for item in above:
             w = item["weight"]
             weight_style = "green" if w >= 0.9 else "yellow" if w >= 0.6 else "red"
-            vocab_table.add_row(item["text"], item["pos"], f"[{weight_style}]{w:.2f}[/{weight_style}]", a2)
+            above_table.add_row(item["text"], item["pos"], f"[{weight_style}]{w:.2f}[/{weight_style}]")
 
-        log.write(vocab_table)
+        # Filtered out panel
+        below_table = Table(show_lines=False, pad_edge=False, expand=True)
+        below_table.add_column("Lemma", style="bold")
+        below_table.add_column("POS", style="yellow")
+        below_table.add_column("Weight", justify="right")
+
+        for item in below:
+            w = item["weight"]
+            below_table.add_row(item["text"], item["pos"], f"[red]{w:.2f}[/red]")
+
+        panels = Columns([
+            Panel(above_table, title="Candidates", border_style="green"),
+            Panel(below_table, title="Filtered out", border_style="dim"),
+        ], equal=True)
+
+        log.write(panels)
         log.write("")
 
     def action_set_threshold(self) -> None:
