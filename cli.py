@@ -21,12 +21,87 @@ from rich.text import Text
 from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import VerticalScroll
-from textual.widgets import Footer, Header, Input, RichLog
+from textual.screen import ModalScreen
+from textual.widgets import Footer, Header, Input, OptionList, RichLog
 
 import stanza
 
-from pipeline import FREQ_LOADERS, LANGUAGES, LEVELS, PROCESSORS, extract, trim_text
+from pipeline import FREQ_LOADERS, LANGUAGES, LEVEL_BANDS, LEVELS, PROCESSORS, extract, trim_text
+
+
+class LevelPicker(ModalScreen[str]):
+    """Modal popup for selecting learner level."""
+
+    CSS = """
+    LevelPicker {
+        align: center middle;
+    }
+    #level-list {
+        width: 20;
+        height: auto;
+        max-height: 10;
+        border: solid $accent;
+        background: $surface;
+    }
+    """
+
+    BINDINGS = [Binding("escape", "dismiss('')", "Cancel")]
+
+    def __init__(self, current: str):
+        super().__init__()
+        self.current = current
+
+    def compose(self) -> ComposeResult:
+        options = OptionList(*LEVELS, id="level-list")
+        yield options
+
+    def on_mount(self) -> None:
+        ol = self.query_one("#level-list", OptionList)
+        idx = LEVELS.index(self.current) if self.current in LEVELS else 0
+        ol.highlighted = idx
+        ol.focus()
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        self.dismiss(str(event.option.prompt))
+
+
+class HistoryInput(Input):
+    """Input with history (up/down) and key passthrough for app bindings."""
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.history: list[str] = []
+        self.history_index: int = -1
+
+    BINDINGS = [
+        Binding("ctrl+e", "app.set_level", "Level", priority=True),
+        Binding("ctrl+t", "app.set_threshold", "Threshold", priority=True),
+        Binding("ctrl+l", "app.switch_lang", "Language", priority=True),
+    ]
+
+    def on_key(self, event) -> None:
+        if event.key == "up":
+            if self.history and self.history_index < len(self.history) - 1:
+                self.history_index += 1
+                self.value = self.history[self.history_index]
+                self.cursor_position = len(self.value)
+            event.stop()
+            event.prevent_default()
+        elif event.key == "down":
+            if self.history_index > 0:
+                self.history_index -= 1
+                self.value = self.history[self.history_index]
+                self.cursor_position = len(self.value)
+            elif self.history_index == 0:
+                self.history_index = -1
+                self.value = ""
+            event.stop()
+            event.prevent_default()
+
+    def push_history(self, text: str) -> None:
+        if text and (not self.history or self.history[0] != text):
+            self.history.insert(0, text)
+        self.history_index = -1
 
 
 class VocabApp(App):
@@ -57,11 +132,12 @@ class VocabApp(App):
         self.threshold = 0.5
         self.nlp = None
         self.freq = None
+        self._input_mode = None  # "threshold", "level", "lang", or None
 
     def compose(self) -> ComposeResult:
         yield Header()
         yield RichLog(id="output", wrap=True, highlight=True, markup=True)
-        yield Input(placeholder="Enter text to analyze...", id="text-input")
+        yield HistoryInput(placeholder="Enter text to analyze...", id="text-input")
         yield Footer()
 
     def on_mount(self) -> None:
@@ -82,14 +158,41 @@ class VocabApp(App):
         self.freq = FREQ_LOADERS[self.lang]()
 
         log.write(f"[green]Ready.[/green] {len(self.freq)} entries | Level: {self.level} | Threshold: {self.threshold}\n")
-        self.query_one("#text-input", Input).focus()
+        self.query_one("#text-input", HistoryInput).focus()
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
+        inp = self.query_one("#text-input", HistoryInput)
         text = event.value.strip()
+
+        if self._input_mode == "threshold":
+            self._input_mode = None
+            inp.placeholder = "Enter text to analyze..."
+            try:
+                self.threshold = float(text)
+                log = self.query_one("#output", RichLog)
+                log.write(f"[dim]Threshold set to {self.threshold}[/dim]\n")
+            except ValueError:
+                pass
+            inp.clear()
+            return
+
+        if self._input_mode == "lang":
+            self._input_mode = None
+            inp.placeholder = "Enter text to analyze..."
+            if text in LANGUAGES:
+                self.lang = text
+                self.nlp = None
+                inp.clear()
+                self.load_pipeline()
+            else:
+                inp.clear()
+            return
+
         if not text or not self.nlp:
             return
 
-        event.input.clear()
+        inp.push_history(text)
+        inp.clear()
         self.process_text(text)
 
     @work(thread=True)
@@ -125,6 +228,8 @@ class VocabApp(App):
         above = [item for item in all_lemmas if item["weight"] > self.threshold]
         below = [item for item in all_lemmas if item["weight"] <= self.threshold]
 
+        bands = LEVEL_BANDS[self.level]
+
         def _make_table(items):
             table = Table(show_lines=False, pad_edge=False, expand=True)
             table.add_column("Lemma", style="bold")
@@ -135,8 +240,6 @@ class VocabApp(App):
             for item in items:
                 w = item["weight"]
                 weight_style = "green" if w >= 0.9 else "yellow" if w >= 0.5 else "red"
-                from pipeline import LEVEL_BANDS
-                bands = LEVEL_BANDS[self.level]
                 rank = item.get("rank")
                 if rank is None:
                     band = "?"
@@ -158,75 +261,25 @@ class VocabApp(App):
         log.write("")
 
     def action_set_threshold(self) -> None:
-        inp = self.query_one("#text-input", Input)
+        inp = self.query_one("#text-input", HistoryInput)
         inp.value = ""
-        inp.placeholder = f"Enter threshold (current: {self.threshold}):"
-        inp._threshold_mode = True
+        inp.placeholder = f"Threshold ({self.threshold}):"
+        self._input_mode = "threshold"
 
     def action_set_level(self) -> None:
-        inp = self.query_one("#text-input", Input)
-        inp.value = ""
-        choices = ", ".join(LEVELS)
-        inp.placeholder = f"Enter level ({choices}, current: {self.level}):"
-        inp._level_mode = True
-
-    def action_switch_lang(self) -> None:
-        inp = self.query_one("#text-input", Input)
-        inp.value = ""
-        choices = ", ".join(LANGUAGES)
-        inp.placeholder = f"Enter language ({choices}):"
-        inp._lang_mode = True
-
-    def on_input_submitted_special(self, event: Input.Submitted) -> None:
-        """Handled via overriding on_input_submitted."""
-        pass
-
-    # Override to handle special modes
-    _original_on_input_submitted = None
-
-    def on_input_submitted(self, event: Input.Submitted) -> None:
-        inp = event.input
-        text = event.value.strip()
-
-        if getattr(inp, "_threshold_mode", False):
-            inp._threshold_mode = False
-            inp.placeholder = "Enter text to analyze..."
-            try:
-                self.threshold = float(text)
-                log = self.query_one("#output", RichLog)
-                log.write(f"[dim]Threshold set to {self.threshold}[/dim]\n")
-            except ValueError:
-                pass
-            inp.clear()
-            return
-
-        if getattr(inp, "_level_mode", False):
-            inp._level_mode = False
-            inp.placeholder = "Enter text to analyze..."
-            if text.upper() in LEVELS:
-                self.level = text.upper()
+        def on_level_selected(level: str) -> None:
+            if level:
+                self.level = level
                 log = self.query_one("#output", RichLog)
                 log.write(f"[dim]Level set to {self.level}[/dim]\n")
-            inp.clear()
-            return
 
-        if getattr(inp, "_lang_mode", False):
-            inp._lang_mode = False
-            inp.placeholder = "Enter text to analyze..."
-            if text in LANGUAGES:
-                self.lang = text
-                self.nlp = None
-                inp.clear()
-                self.load_pipeline()
-            else:
-                inp.clear()
-            return
+        self.push_screen(LevelPicker(self.level), on_level_selected)
 
-        if not text or not self.nlp:
-            return
-
-        inp.clear()
-        self.process_text(text)
+    def action_switch_lang(self) -> None:
+        inp = self.query_one("#text-input", HistoryInput)
+        inp.value = ""
+        inp.placeholder = f"Language ({', '.join(LANGUAGES)}):"
+        self._input_mode = "lang"
 
 
 def main():
