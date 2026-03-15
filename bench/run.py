@@ -35,10 +35,10 @@ You are evaluating vocabulary lists extracted from a short Dutch text for a {lev
 ## Text
 {text}
 
-## List A (pipeline)
+## List A
 {list_a}
 
-## List B (LLM baseline)
+## List B
 {list_b}
 
 Score each list 1-5 on:
