@@ -1,0 +1,15 @@
+Third-Party Licenses and Attribution
+=====================================
+
+Dutch Lemmatization Data
+------------------------
+The file data/nl_lemmas.tsv contains lemmatization data derived from
+the Dutch Wiktionary, obtained via the wiktextract project (kaikki.org).
+
+Wiktionary content is licensed under the Creative Commons
+Attribution-ShareAlike 3.0 Unported License (CC-BY-SA 3.0).
+https://creativecommons.org/licenses/by-sa/3.0/
+
+The wiktextract tool is licensed under the MIT License.
+Copyright 2018-2020 Tatu Ylonen
+https://github.com/tatuylonen/wiktextract

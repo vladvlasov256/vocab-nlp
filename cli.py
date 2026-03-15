@@ -25,9 +25,9 @@ from textual.binding import Binding
 from textual.screen import ModalScreen
 from textual.widgets import Footer, Header, Input, OptionList, RichLog
 
-import stanza
+import stanza  # noqa: F401 — must import before Textual to apply tqdm patch above
 
-from pipeline import FREQ_LOADERS, LANGUAGES, LEVEL_BANDS, LEVELS, PROCESSORS, extract, trim_text
+from pipeline import FREQ_LOADERS, LANGUAGES, LEVEL_BANDS, LEVELS, create_stanza_pipeline, extract, trim_text
 
 
 class LevelPicker(ModalScreen[str]):
@@ -165,13 +165,10 @@ class VocabApp(App):
         log = self.query_one("#output", RichLog)
         logging.getLogger("stanza").setLevel(logging.WARNING)
 
-        log.write(f"[dim][1/3] Downloading {self.lang} model...[/dim]")
-        stanza.download(self.lang, processors=PROCESSORS, verbose=False)
+        log.write(f"[dim][1/2] Loading Stanza pipeline for {self.lang}...[/dim]")
+        self.nlp = create_stanza_pipeline(self.lang)
 
-        log.write(f"[dim][2/3] Loading Stanza pipeline...[/dim]")
-        self.nlp = stanza.Pipeline(self.lang, processors=PROCESSORS, use_gpu=False, logging_level="WARN")
-
-        log.write(f"[dim][3/3] Loading frequency list...[/dim]")
+        log.write(f"[dim][2/2] Loading frequency list...[/dim]")
         self.freq = FREQ_LOADERS[self.lang]()
 
         log.write(f"[green]Ready.[/green] {len(self.freq)} entries | Level: {self.level} | Threshold: {self.threshold}\n")

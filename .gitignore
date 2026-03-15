@@ -3,3 +3,5 @@ __pycache__/
 *.pyc
 .modal/
 .env
+# Raw Wiktionary downloads (processed TSV is committed)
+*.jsonl.gz

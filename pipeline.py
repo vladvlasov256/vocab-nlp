@@ -1,6 +1,7 @@
 """Core NLP pipeline — shared by app.py (Modal) and cli.py (local)."""
 
 import csv
+import logging
 import re
 from pathlib import Path
 
@@ -60,6 +61,67 @@ def load_freq_sr() -> dict[str, int]:
 
 
 FREQ_LOADERS = {"nl": load_freq_nl, "sr": load_freq_sr}
+
+
+def load_lemma_overrides(lang: str) -> dict[tuple[str, str], str]:
+    """Load lemma override TSV for a language. Returns {(inflected_form, pos): lemma}."""
+    path = DATA_DIR / f"{lang}_lemmas.tsv"
+    if not path.exists():
+        return {}
+    overrides: dict[tuple[str, str], str] = {}
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            if line.startswith("#") or not line.strip():
+                continue
+            parts = line.rstrip("\n").split("\t")
+            if len(parts) != 3:
+                continue
+            form, pos, lemma = parts
+            overrides[(form, pos)] = lemma
+    return overrides
+
+
+def patch_stanza_lemmatizer(nlp, lang: str) -> int:
+    """Inject Wiktionary-based lemma overrides into Stanza's composite_dict.
+
+    Also adds capitalized variants so sentence-initial words are handled.
+    Returns the number of entries injected.
+    """
+    overrides = load_lemma_overrides(lang)
+    if not overrides:
+        return 0
+
+    trainer = nlp.processors["lemma"]._trainer
+    count = 0
+    for (form, pos), lemma in overrides.items():
+        key = (form, pos)
+        if key not in trainer.composite_dict:
+            trainer.composite_dict[key] = lemma
+            count += 1
+        # Also add capitalized variant (e.g. "Coaches" at start of sentence)
+        cap_form = form[0].upper() + form[1:] if form else form
+        cap_key = (cap_form, pos)
+        if cap_form != form and cap_key not in trainer.composite_dict:
+            trainer.composite_dict[cap_key] = lemma
+            count += 1
+
+    logging.getLogger("pipeline").info(f"[lemma-patch] {lang}: injected {count} overrides ({len(overrides)} base entries)")
+    return count
+
+
+def create_stanza_pipeline(lang: str, verbose: bool = False):
+    """Create a Stanza pipeline for a language, with lemma overrides applied.
+
+    Downloads model if needed, creates the pipeline, and patches the lemmatizer
+    with Wiktionary-based overrides. This is the single entry point — callers
+    should not interact with Stanza directly.
+    """
+    import stanza
+
+    stanza.download(lang, processors=PROCESSORS, verbose=verbose)
+    nlp = stanza.Pipeline(lang, processors=PROCESSORS, use_gpu=False, logging_level="WARN")
+    patch_stanza_lemmatizer(nlp, lang)
+    return nlp
 
 
 def rank_to_weight(rank: int | None, level: str = "A0") -> float:

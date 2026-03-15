@@ -9,7 +9,7 @@ from pipeline import (
     LANGUAGES,
     LEVELS,
     MAX_LEMMAS,
-    PROCESSORS,
+    create_stanza_pipeline,
     extract,
     trim_text,
 )
@@ -38,16 +38,9 @@ image = modal.Image.debian_slim(python_version="3.13").pip_install(
 class VocabNlp:
     @modal.enter(snap=True)
     def load_models(self):
-        import stanza
-
         self.pipelines = {}
         for lang in LANGUAGES:
-            stanza.download(lang, processors=PROCESSORS)
-            self.pipelines[lang] = stanza.Pipeline(
-                lang,
-                processors=PROCESSORS,
-                use_gpu=False,
-            )
+            self.pipelines[lang] = create_stanza_pipeline(lang)
 
         self.freq = {lang: FREQ_LOADERS[lang]() for lang in LANGUAGES}
 

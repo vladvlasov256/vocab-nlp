@@ -18,10 +18,8 @@ from openai import OpenAI
 from rich.console import Console
 from rich.table import Table
 
-import stanza
-
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from pipeline import FREQ_LOADERS, PROCESSORS, extract, trim_text
+from pipeline import FREQ_LOADERS, create_stanza_pipeline, extract, trim_text
 
 BENCH_DIR = Path(__file__).resolve().parent
 TEXTS_DIR = BENCH_DIR / "texts"
@@ -138,8 +136,7 @@ def main():
         lang = entry["lang"]
         if lang not in pipelines:
             console.print(f"[dim]Loading {lang} pipeline...[/dim]")
-            stanza.download(lang, processors=PROCESSORS, verbose=False)
-            pipelines[lang] = stanza.Pipeline(lang, processors=PROCESSORS, use_gpu=False, logging_level="WARN")
+            pipelines[lang] = create_stanza_pipeline(lang)
             freq_data[lang] = FREQ_LOADERS[lang]()
 
     # Judge LLM
