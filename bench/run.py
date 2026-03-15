@@ -41,10 +41,12 @@ You are evaluating vocabulary lists extracted from a short Dutch text for a {lev
 ## List B
 {list_b}
 
+The learner is reading this text as part of a lesson. The goal is to help them understand and learn from it.
+
 Score each list 1-5 on:
-- **Relevance**: Are the words useful for a {level} learner? (not too easy, not too hard)
+- **Relevance**: Does the list help this {level} learner understand this specific text?
 - **Coverage**: Does the list capture the important vocabulary from the text?
-- **Noise**: Are there false picks — trivial words, proper nouns, or words that don't need teaching?
+- **Noise**: Are there false picks — trivial words, proper nouns, misspellings, or malformed entries?
 
 Respond with ONLY valid JSON, no markdown:
 {{"score_a": <int 1-5>, "score_b": <int 1-5>, "reasoning": "<1-2 sentences>"}}
