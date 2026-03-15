@@ -26,7 +26,7 @@ BENCH_DIR = Path(__file__).resolve().parent
 TEXTS_DIR = BENCH_DIR / "texts"
 BASELINE_DIR = BENCH_DIR / "baseline"
 
-JUDGE_MODEL = "gpt-4.1"
+JUDGE_MODEL = "gpt-5"
 
 JUDGE_PROMPT = """\
 You are evaluating vocabulary lists extracted from a short Dutch text for a {level} language learner.
@@ -100,7 +100,7 @@ def judge(client: OpenAI, text: str, level: str, pipeline_lemmas: list[str], bas
     response = client.chat.completions.create(
         model=JUDGE_MODEL,
         messages=[{"role": "user", "content": prompt}],
-        temperature=0,
+        temperature=1,
     )
     content = response.choices[0].message.content.strip()
     return json.loads(content)
