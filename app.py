@@ -37,7 +37,7 @@ def _get_pipeline(lang: str):
     cpu=1,
 )
 @modal.fastapi_endpoint(method="POST")
-def extract(request_data: dict, authorization: str = Header(...)):
+def extract(request_data: dict, authorization: str = Header()):
     """Extract vocabulary candidates from text."""
     if authorization != f"Bearer {os.environ['API_KEY']}":
         raise HTTPException(status_code=401, detail="Unauthorized")

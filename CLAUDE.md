@@ -12,9 +12,9 @@ Multilingual NLP microservice that extracts vocabulary candidates from short tex
 ## Commands
 
 ```
-uv sync                  # install deps
-modal serve app.py       # local dev (hot reload)
-modal deploy app.py      # deploy to Modal
+uv sync                       # install deps
+uv run modal serve app.py     # local dev (hot reload)
+uv run modal deploy app.py    # deploy to Modal
 ```
 
 ## Languages
