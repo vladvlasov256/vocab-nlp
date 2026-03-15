@@ -216,9 +216,61 @@ Accept learner level (A0, A1, A2) as an input parameter. The level controls whic
 
 This shifts the weight function's rank bands and the filtering threshold so that an A0 learner sees "groot" and "klein" while an A2 learner skips them in favor of less frequent words like "hervormen".
 
+## Benchmark Pipeline
+
+Systematic evaluation of vocab extraction quality against LLM baseline. Required before tuning rank band constants.
+
+### Dataset
+
+Prepare **5 adapted texts per level** (A0, A1, A2) for Dutch and Serbian = 30 texts total.
+
+Source: existing adapted texts from YourDutchBot lessons, or generate new ones with the bot's text adaptation prompt.
+
+Store in `bench/texts/`:
+```
+bench/texts/nl_a0_01.txt
+bench/texts/nl_a1_01.txt
+bench/texts/sr_a2_01.txt
+...
+```
+
+### LLM Baseline
+
+For each text, generate vocab with the bot's current LLM prompt (v1 approach). Store in `bench/baseline/`:
+```
+bench/baseline/nl_a0_01.json   # {"lemmas": ["geld", "huis", ...]}
+```
+
+### Evaluation Pipeline
+
+`bench/run.py`:
+1. For each text, run our pipeline at the matching level
+2. Collect: our candidates vs LLM baseline
+3. Send both to a judge LLM (Claude) with the prompt:
+   > "Given this A1 Dutch text, which vocabulary list is better for an A1 learner? Score each list 1-5 on: relevance, coverage, noise (false picks)."
+4. Output a summary table: text, level, our score, LLM score, delta
+
+### Usage
+
+```
+uv run python bench/run.py                    # run full benchmark
+uv run python bench/run.py --level A1         # single level
+uv run python bench/run.py --lang nl          # single language
+```
+
+### What to tune
+
+Once the benchmark is in place, iterate on:
+- `LEVEL_BANDS` cutoffs (known/target per level)
+- Unknown word default weight
+- Whether DET should be included
+- Noun chunk extraction rules
+
+Each change re-runs the benchmark and shows the delta.
+
 ## Open Questions
 
-- [ ] Should PROPN (proper nouns like "Angela Merkel") be included or filtered out?
+- [x] Should PROPN (proper nouns like "Angela Merkel") be included or filtered out? → **Filtered out**, returned in separate `proper_nouns` list.
 - [ ] Should the ranking step use the learner's **known vocabulary** (from past lessons) to deprioritize already-learned words?
 - [ ] Is Modal the right long-term host, or should this move to a sidecar on the Vercel deployment?
 - [ ] Which CEFR lists are freely available and redistributable for Serbian and Greek?
