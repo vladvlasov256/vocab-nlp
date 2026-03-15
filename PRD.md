@@ -204,6 +204,18 @@ The bot calls the microservice during lesson generation (reading/listening tasks
 5. Present vocabulary to user
 ```
 
+## Future: Level-Aware Filtering
+
+Accept learner level (A0, A1, A2) as an input parameter. The level controls which words are considered "already known" and filtered out:
+
+| Level | "Known" band | Effect |
+|-------|-------------|--------|
+| A0 | top ~500 | Surface almost everything — even basic words are new |
+| A1 | top ~1000 | Skip the most basic words, show A2-level vocab |
+| A2 | top ~2000 | Skip common words, surface B1-level vocab |
+
+This shifts the weight function's rank bands and the filtering threshold so that an A0 learner sees "groot" and "klein" while an A2 learner skips them in favor of less frequent words like "hervormen".
+
 ## Open Questions
 
 - [ ] Should PROPN (proper nouns like "Angela Merkel") be included or filtered out?
