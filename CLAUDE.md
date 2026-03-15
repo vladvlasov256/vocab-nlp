@@ -44,6 +44,7 @@ Step 2: Phrase extraction + CEFR ranking (YAKE, frequency lists)
 
 ## Modal Config
 
+- `@app.cls` (not `@app.function`) — required for `enable_memory_snapshot` + `@modal.enter(snap=True)`, which snapshots loaded Stanza models so cold starts skip download/load. This means the endpoint is `VocabNlp.extract`, not just `extract`.
 - `max_containers=1` — low traffic, single container is sufficient
 - CPU-only (`cpu=1`, `use_gpu=False`) — Stanza performs well on CPU for short texts; GPU containers are significantly more expensive on Modal
 
