@@ -98,12 +98,14 @@ def extract_separable_verbs(sent) -> list[dict]:
 
 
 def extract_noun_chunks(sent) -> list[dict]:
-    """Extract multi-word noun phrases from dependency parse."""
+    """Extract multi-word noun phrases from dependency parse.
+    Only keeps chunks where all dependents are ADJ or NOUN (no PROPN, NUM, DET)."""
     chunks = []
     for word in sent.words:
         if word.upos == "NOUN" and word.deprel not in ("flat", "compound", "nmod"):
             deps = [w for w in sent.words
-                    if w.head == word.id and w.deprel in ("amod", "flat", "compound", "nmod")]
+                    if w.head == word.id and w.deprel in ("amod", "flat", "compound")
+                    and w.upos in ("ADJ", "NOUN")]
             if deps:
                 phrase_words = sorted(deps + [word], key=lambda w: w.id)
                 phrase = " ".join(w.lemma for w in phrase_words)
@@ -114,15 +116,23 @@ def extract_noun_chunks(sent) -> list[dict]:
     return chunks
 
 
+def _clean_lemma(text: str) -> str:
+    """Clean up Stanza lemma artifacts: underscores, extra whitespace."""
+    return re.sub(r"[_]+", " ", text).strip()
+
+
 def extract(doc, lang: str, freq: dict[str, int], level: str = "A0") -> dict:
     """Run Steps 1-2 on a Stanza doc. Returns the response dict."""
     candidates = []
     proper_nouns = []
+    # Collect proper noun lemmas to filter demonym adjectives
+    propn_stems = set()
 
     for sent in doc.sentences:
         for word in sent.words:
             if word.upos == "PROPN":
                 proper_nouns.append({"text": word.lemma, "pos": "PROPN"})
+                propn_stems.add(word.lemma.lower())
             elif word.upos in ("NOUN", "VERB", "ADJ", "DET"):
                 candidates.append({"text": word.lemma, "pos": word.upos})
 
@@ -130,6 +140,17 @@ def extract(doc, lang: str, freq: dict[str, int], level: str = "A0") -> dict:
             candidates.extend(extract_separable_verbs(sent))
 
         candidates.extend(extract_noun_chunks(sent))
+
+    # Clean underscores from Stanza tokenizer
+    for item in candidates:
+        item["text"] = _clean_lemma(item["text"])
+
+    # Filter demonym/nationality adjectives (e.g. "Israëlisch", "Palestijns")
+    candidates = [item for item in candidates
+                  if not (item["pos"] == "ADJ" and item["text"][0:1].isupper())]
+
+    # Filter DET (articles) — too trivial for any level
+    candidates = [item for item in candidates if item["pos"] != "DET"]
 
     # Deduplicate
     seen = set()
