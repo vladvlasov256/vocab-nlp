@@ -18,7 +18,7 @@ image = modal.Image.debian_slim(python_version="3.13").pip_install(
     "fastapi[standard]",
     "stanza",
 ).run_commands(
-    "python -c \"import stanza; stanza.download('nl'); stanza.download('sr')\"",
+    "python -c \"import stanza; stanza.download('nl', processors='tokenize,pos,lemma,depparse'); stanza.download('sr', processors='tokenize,pos,lemma,depparse')\"",
 )
 
 
@@ -38,11 +38,12 @@ class VocabNlp:
         import stanza
 
         self.pipelines = {}
+        processors = "tokenize,pos,lemma,depparse"
         for lang in ["nl", "sr"]:
-            stanza.download(lang, processors="tokenize,pos,lemma,depparse,ner")
+            stanza.download(lang, processors=processors)
             self.pipelines[lang] = stanza.Pipeline(
                 lang,
-                processors="tokenize,pos,lemma,depparse,ner",
+                processors=processors,
                 use_gpu=False,
             )
 
