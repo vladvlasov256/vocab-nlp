@@ -9,10 +9,10 @@ MAX_LEMMAS = 15
 
 # Rank bands per CEFR level
 LEVEL_BANDS = {
-    "A0": {"known": 0,     "target": 500},
-    "A1": {"known": 500,   "target": 1500},
-    "A2": {"known": 1500,  "target": 3000},
-    "B1": {"known": 3000,  "target": 6000},
+    "A0": {"known": 0,     "target": 1000},
+    "A1": {"known": 500,   "target": 3000},
+    "A2": {"known": 1500,  "target": 5000},
+    "B1": {"known": 3000,  "target": 8000},
 }
 LEVELS = list(LEVEL_BANDS.keys())
 
