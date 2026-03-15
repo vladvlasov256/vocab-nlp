@@ -61,7 +61,7 @@ The service must aggressively trim input text before NLP processing to minimize 
 
 Stanza processing time is linear in text length. Every unnecessary token costs ~1ms. For a 10-sentence A2 text this is marginal, but the service should never waste cycles on boilerplate that the news adapter or LLM left in.
 
-### Step 1: Linguistic Preprocessing (Stanza)
+### Step 1: Linguistic Preprocessing (Stanza) ✅
 
 - Load language-specific Stanza pipeline: `tokenize, pos, lemma, depparse, ner`
 - Extract: tokens, POS tags, lemmas, dependency relations, named entities, noun chunks
