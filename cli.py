@@ -1,96 +1,199 @@
-"""Interactive CLI for testing the extract pipeline locally."""
+"""Interactive TUI for testing the extract pipeline locally."""
 
 import logging
+import os
 import sys
+import warnings
 
-from rich.console import Console
-from rich.prompt import Prompt, FloatPrompt
+os.environ["TQDM_DISABLE"] = "1"
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+
+# Patch tqdm to avoid multiprocessing lock issues inside Textual's event loop
+import tqdm
+import tqdm.std
+tqdm.std.TqdmDefaultWriteLock.create_mp_lock = classmethod(lambda cls: setattr(cls, 'mp_lock', None))
+
 from rich.table import Table
+from rich.text import Text
+
+from textual import work
+from textual.app import App, ComposeResult
+from textual.binding import Binding
+from textual.containers import VerticalScroll
+from textual.widgets import Footer, Header, Input, RichLog
 
 import stanza
 
 from pipeline import FREQ_LOADERS, LANGUAGES, PROCESSORS, extract, trim_text
 
-console = Console()
 
+class VocabApp(App):
+    CSS = """
+    #output {
+        height: 1fr;
+        border: solid $primary-background;
+    }
+    #text-input {
+        dock: bottom;
+        margin: 0 0 1 0;
+    }
+    """
 
-def show_tokens(doc):
-    table = Table(title="Tokens", show_lines=False, pad_edge=False)
-    table.add_column("Token", style="cyan")
-    table.add_column("Lemma", style="green")
-    table.add_column("POS", style="yellow")
-    table.add_column("Deprel", style="magenta")
-    table.add_column("Head", style="dim")
+    BINDINGS = [
+        Binding("ctrl+t", "set_threshold", "Threshold"),
+        Binding("ctrl+l", "switch_lang", "Language"),
+        Binding("ctrl+c", "quit", "Quit"),
+    ]
 
-    for sent in doc.sentences:
-        for word in sent.words:
-            head_text = next((w.text for w in sent.words if w.id == word.head), "ROOT")
-            table.add_row(word.text, word.lemma, word.upos, word.deprel, head_text)
-        table.add_section()
+    TITLE = "vocab-nlp"
 
-    console.print(table)
+    def __init__(self):
+        super().__init__()
+        self.lang = "nl"
+        self.threshold = 0.5
+        self.nlp = None
+        self.freq = None
 
+    def compose(self) -> ComposeResult:
+        yield Header()
+        yield RichLog(id="output", wrap=True, highlight=True, markup=True)
+        yield Input(placeholder="Enter text to analyze...", id="text-input")
+        yield Footer()
 
-def show_result(result):
-    table = Table(title="Vocabulary Candidates", show_lines=False, pad_edge=False)
-    table.add_column("Lemma", style="bold")
-    table.add_column("POS", style="yellow")
-    table.add_column("Weight", justify="right", style="cyan")
-    table.add_column("A2", justify="center")
+    def on_mount(self) -> None:
+        self.load_pipeline()
 
-    for item in result["lemmas"]:
-        a2 = "[green]✓[/green]" if item["is_a2"] else ""
-        w = item["weight"]
-        weight_style = "green" if w >= 0.9 else "yellow" if w >= 0.6 else "red"
-        table.add_row(
-            item["text"],
-            item["pos"],
-            f"[{weight_style}]{w:.2f}[/{weight_style}]",
-            a2,
-        )
+    @work(thread=True)
+    def load_pipeline(self) -> None:
+        log = self.query_one("#output", RichLog)
+        logging.getLogger("stanza").setLevel(logging.WARNING)
 
-    console.print(table)
+        log.write(f"[dim][1/3] Downloading {self.lang} model...[/dim]")
+        stanza.download(self.lang, processors=PROCESSORS, verbose=False)
+
+        log.write(f"[dim][2/3] Loading Stanza pipeline...[/dim]")
+        self.nlp = stanza.Pipeline(self.lang, processors=PROCESSORS, use_gpu=False, logging_level="WARN")
+
+        log.write(f"[dim][3/3] Loading frequency list...[/dim]")
+        self.freq = FREQ_LOADERS[self.lang]()
+
+        log.write(f"[green]Ready.[/green] {len(self.freq)} frequency entries. Threshold: {self.threshold}\n")
+        self.query_one("#text-input", Input).focus()
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        text = event.value.strip()
+        if not text or not self.nlp:
+            return
+
+        event.input.clear()
+        self.process_text(text)
+
+    @work(thread=True)
+    def process_text(self, text: str) -> None:
+        log = self.query_one("#output", RichLog)
+        log.write(Text(f"> {text}", style="bold cyan"))
+        log.write("")
+
+        text = trim_text(text)
+        doc = self.nlp(text)
+
+        # Tokens table
+        tokens_table = Table(show_lines=False, pad_edge=False, title="Tokens")
+        tokens_table.add_column("Token", style="cyan")
+        tokens_table.add_column("Lemma", style="green")
+        tokens_table.add_column("POS", style="yellow")
+        tokens_table.add_column("Deprel", style="magenta")
+        tokens_table.add_column("Head", style="dim")
+
+        for sent in doc.sentences:
+            for word in sent.words:
+                head_text = next((w.text for w in sent.words if w.id == word.head), "ROOT")
+                tokens_table.add_row(word.text, word.lemma, word.upos, word.deprel, head_text)
+            tokens_table.add_section()
+
+        log.write(tokens_table)
+        log.write("")
+
+        # Vocab table
+        result = extract(doc, self.lang, self.freq, threshold=self.threshold)
+
+        if not result["lemmas"]:
+            log.write("[dim]No candidates above threshold.[/dim]\n")
+            return
+
+        vocab_table = Table(show_lines=False, pad_edge=False, title="Vocabulary Candidates")
+        vocab_table.add_column("Lemma", style="bold")
+        vocab_table.add_column("POS", style="yellow")
+        vocab_table.add_column("Weight", justify="right")
+        vocab_table.add_column("A2", justify="center")
+
+        for item in result["lemmas"]:
+            a2 = "✓" if item["is_a2"] else ""
+            w = item["weight"]
+            weight_style = "green" if w >= 0.9 else "yellow" if w >= 0.6 else "red"
+            vocab_table.add_row(item["text"], item["pos"], f"[{weight_style}]{w:.2f}[/{weight_style}]", a2)
+
+        log.write(vocab_table)
+        log.write("")
+
+    def action_set_threshold(self) -> None:
+        inp = self.query_one("#text-input", Input)
+        inp.value = ""
+        inp.placeholder = f"Enter threshold (current: {self.threshold}):"
+        inp._threshold_mode = True
+
+    def action_switch_lang(self) -> None:
+        inp = self.query_one("#text-input", Input)
+        inp.value = ""
+        choices = ", ".join(LANGUAGES)
+        inp.placeholder = f"Enter language ({choices}):"
+        inp._lang_mode = True
+
+    def on_input_submitted_special(self, event: Input.Submitted) -> None:
+        """Handled via overriding on_input_submitted."""
+        pass
+
+    # Override to handle special modes
+    _original_on_input_submitted = None
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        inp = event.input
+        text = event.value.strip()
+
+        if getattr(inp, "_threshold_mode", False):
+            inp._threshold_mode = False
+            inp.placeholder = "Enter text to analyze..."
+            try:
+                self.threshold = float(text)
+                log = self.query_one("#output", RichLog)
+                log.write(f"[dim]Threshold set to {self.threshold}[/dim]\n")
+            except ValueError:
+                pass
+            inp.clear()
+            return
+
+        if getattr(inp, "_lang_mode", False):
+            inp._lang_mode = False
+            inp.placeholder = "Enter text to analyze..."
+            if text in LANGUAGES:
+                self.lang = text
+                self.nlp = None
+                inp.clear()
+                self.load_pipeline()
+            else:
+                inp.clear()
+            return
+
+        if not text or not self.nlp:
+            return
+
+        inp.clear()
+        self.process_text(text)
 
 
 def main():
-    lang = sys.argv[1] if len(sys.argv) > 1 else None
-    if lang not in LANGUAGES:
-        lang = Prompt.ask("Language", choices=LANGUAGES)
-
-    threshold = FloatPrompt.ask("Weight threshold", default=0.5)
-
-    logging.getLogger("stanza").setLevel(logging.WARNING)
-
-    with console.status("[bold]Downloading model..."):
-        stanza.download(lang, processors=PROCESSORS, verbose=False)
-
-    with console.status("[bold]Loading Stanza pipeline..."):
-        nlp = stanza.Pipeline(lang, processors=PROCESSORS, use_gpu=False, logging_level="WARN")
-
-    with console.status("[bold]Loading frequency list..."):
-        freq = FREQ_LOADERS[lang]()
-
-    console.print(f"[green]Ready.[/green] {len(freq)} frequency entries.\n")
-
-    while True:
-        try:
-            text = Prompt.ask("[bold]Text[/bold]")
-        except (EOFError, KeyboardInterrupt):
-            console.print("\nBye!")
-            break
-
-        if not text.strip():
-            continue
-
-        text = trim_text(text)
-        doc = nlp(text)
-
-        show_tokens(doc)
-        console.print()
-
-        result = extract(doc, lang, freq, threshold=threshold)
-        show_result(result)
-        console.print()
+    app = VocabApp()
+    app.run()
 
 
 if __name__ == "__main__":
