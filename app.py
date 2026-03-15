@@ -1,4 +1,7 @@
+import os
+
 import modal
+from fastapi import Header, HTTPException
 
 app = modal.App("vocab-nlp")
 
@@ -26,6 +29,7 @@ def _get_pipeline(lang: str):
 
 @app.function(
     image=image,
+    secrets=[modal.Secret.from_name("vocab-nlp-api-key")],
     min_containers=0,
     max_containers=1,
     timeout=120,
@@ -33,8 +37,11 @@ def _get_pipeline(lang: str):
     cpu=1,
 )
 @modal.fastapi_endpoint(method="POST")
-def extract(request_data: dict):
+def extract(request_data: dict, authorization: str = Header(...)):
     """Extract vocabulary candidates from text."""
+    if authorization != f"Bearer {os.environ['API_KEY']}":
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
     text = request_data.get("text", "")
     lang = request_data.get("lang", "")
 
