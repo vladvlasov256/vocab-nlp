@@ -95,7 +95,7 @@ Displays three panels: **Candidates** (above threshold), **Filtered out** (below
 
 ## Benchmark
 
-15 Dutch texts (5 per level: A0, A1, A2) evaluated by GPT-5 as blind judge. Pipeline vocab list vs LLM baseline (v1 prompt).
+30 Dutch texts (10 per level: A0, A1, A2) evaluated by GPT-5 as blind judge. Pipeline vocab list vs LLM baseline (v1 prompt).
 
 ```bash
 uv run --group bench python bench/run.py
