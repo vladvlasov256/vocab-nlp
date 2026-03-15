@@ -7,7 +7,11 @@ from pathlib import Path
 MAX_TEXT_BYTES = 4096
 MAX_LEMMAS = 15
 
-# Rank bands per CEFR level
+# Rank bands per CEFR level — defines what a learner at each level
+# is expected to already know vs. what they should learn next.
+# "known" = top N most frequent words (skip these, too easy)
+# "target" = words ranked up to this position (prioritize these)
+# Words beyond "target" still appear but score lower.
 LEVEL_BANDS = {
     "A0": {"known": 0,     "target": 1000},
     "A1": {"known": 500,   "target": 3000},
@@ -23,13 +27,17 @@ LANGUAGES = ["nl", "sr"]
 
 
 def trim_text(text: str) -> str:
-    """Step 0: Collapse whitespace and cap length."""
+    """Collapse whitespace and cap at MAX_TEXT_BYTES. Expects clean text (no HTML)."""
     text = re.sub(r"\s+", " ", text).strip()
     return text[:MAX_TEXT_BYTES]
 
 
 def load_freq_nl() -> dict[str, int]:
-    """Load SUBTLEX-NL frequency list. Returns {lemma: rank}."""
+    """Load SUBTLEX-NL frequency list. Returns {lemma: rank}.
+
+    SUBTLEX-NL is a subtitle-based corpus (~400k lemmas). Lower rank = more common.
+    Used for CEFR scoring and as ground truth for compound validation.
+    """
     freq = {}
     with open(DATA_DIR / "nl.csv", encoding="utf-8") as f:
         reader = csv.DictReader(f)
@@ -41,7 +49,7 @@ def load_freq_nl() -> dict[str, int]:
 
 
 def load_freq_sr() -> dict[str, int]:
-    """Load Serbian 50k frequency list. Returns {word: rank}."""
+    """Load Serbian Wikipedia 50k frequency list. Returns {word: rank}."""
     freq = {}
     with open(DATA_DIR / "sr.txt", encoding="utf-8") as f:
         for rank, line in enumerate(f, 1):
@@ -55,17 +63,20 @@ FREQ_LOADERS = {"nl": load_freq_nl, "sr": load_freq_sr}
 
 
 def rank_to_weight(rank: int | None, level: str = "A0") -> float:
-    """Score a word based on its frequency rank and the learner's level.
+    """Score a word by frequency rank relative to learner level.
 
-    Words in the learner's "known" band score low (already learned).
-    Words in the "target" band score highest (should learn next).
-    Words beyond target are still useful but less relevant.
-    Unknown words get a moderate score (domain-specific vocab).
+    Returns:
+        0.3 — word is in "known" band (too easy, learner already knows it)
+        1.0 — word is in "target" band (sweet spot, should learn next)
+        0.6 — word is beyond target or not in freq list (still useful but less relevant)
+
+    The 0.5 threshold in the API filters out known-band words (0.3),
+    keeping target (1.0) and beyond/unknown (0.6).
     """
     band = LEVEL_BANDS[level]
 
     if rank is None:
-        return 0.6  # unknown = potentially interesting domain vocab
+        return 0.6  # not in freq list — potentially interesting domain vocab
     if rank <= band["known"]:
         return 0.3  # already known at this level
     if rank <= band["target"]:
@@ -74,8 +85,16 @@ def rank_to_weight(rank: int | None, level: str = "A0") -> float:
 
 
 def extract_separable_verbs(sent) -> list[dict]:
-    """Dutch: reconstruct separable verbs from depparse (e.g. 'bel...op' → 'opbellen').
-    Returns the reconstructed form but keeps the base verb lemma for ranking."""
+    """Dutch separable verb reconstruction from dependency parse.
+
+    Dutch has separable verbs where the particle splits from the verb:
+      "Hij belt zijn moeder op" → particle "op" + verb "bellen" → "opbellen"
+
+    Stanza marks particles with deprel="compound:prt" pointing at the verb head.
+    We reconstruct the full form (for display) but keep the base verb lemma
+    as _rank_key (for frequency ranking, since "bellen" is in the freq list
+    but "opbellen" may not be).
+    """
     verbs = {}
     particles = []
     for word in sent.words:
@@ -97,15 +116,23 @@ def extract_separable_verbs(sent) -> list[dict]:
     return results
 
 
-
-
-# Dutch compound connectors for rejoining underscore-split lemmas
+# Dutch compound connectors used between parts of compound words.
+# e.g. "doorzetting" + "s" + "vermogen" → "doorzettingsvermogen"
 _NL_CONNECTORS = ("", "s", "e", "en", "er")
 
 
 def _clean_lemma(text: str, freq: dict[str, int] | None = None) -> str:
-    """Clean Stanza lemma artifacts. If lemma has underscores, try to rejoin
-    as a compound word using Dutch connectors and validate against freq list."""
+    """Fix Stanza's underscore-split compound lemmas.
+
+    Stanza sometimes lemmatizes Dutch compounds with underscores:
+      "doorzettingsvermogen" → "doorzetting_vermogen"
+      "computerprogramma" → "computer_programma"
+
+    We try rejoining the two parts with common Dutch connectors and validate
+    against the frequency list. If a valid compound exists, use it.
+    Otherwise fall through and just strip underscores (produces a space-separated
+    form that will be filtered out later by the space filter).
+    """
     if "_" in text and freq is not None:
         parts = text.split("_")
         if len(parts) == 2:
@@ -119,36 +146,62 @@ def _clean_lemma(text: str, freq: dict[str, int] | None = None) -> str:
 
 
 def extract(doc, lang: str, freq: dict[str, int], level: str = "A0") -> dict:
-    """Run Steps 1-2 on a Stanza doc. Returns the response dict."""
+    """Extract and rank vocabulary candidates from a Stanza doc.
+
+    Pipeline:
+    1. Collect NOUN/VERB/ADJ tokens + reconstruct Dutch separable verbs
+    2. Clean compound lemmas (rejoin underscores)
+    3. Surface form fallback for bad Stanza lemmas
+    4. Filter noise (spaces, demonyms, determiners)
+    5. Deduplicate, rank by frequency, score by CEFR level
+    """
     candidates = []
     proper_nouns = []
-    # Collect proper noun lemmas to filter demonym adjectives
     propn_stems = set()
 
+    # --- Step 1: Collect tokens by POS ---
     for sent in doc.sentences:
         for word in sent.words:
             if word.upos == "PROPN":
                 proper_nouns.append({"text": word.lemma, "pos": "PROPN"})
                 propn_stems.add(word.lemma.lower())
             elif word.upos in ("NOUN", "VERB", "ADJ", "DET"):
-                candidates.append({"text": word.lemma, "pos": word.upos})
+                candidates.append({"text": word.lemma, "pos": word.upos, "_surface": word.text})
 
+        # Dutch separable verbs: "belt...op" → "opbellen"
         if lang == "nl":
             candidates.extend(extract_separable_verbs(sent))
 
-
-    # Clean underscores from Stanza tokenizer — try to rejoin compounds
+    # --- Step 2: Clean compound lemmas ---
+    # Stanza splits Dutch compounds with underscores; try to rejoin them
     for item in candidates:
         item["text"] = _clean_lemma(item["text"], freq)
 
-    # Filter demonym/nationality adjectives (e.g. "Israëlisch", "Palestijns")
+    # --- Step 3: Surface form fallback ---
+    # When Stanza's lemma isn't in the freq list but the original surface form is,
+    # use the surface form. Catches cases where Stanza over-strips:
+    # e.g. surface "verzekerd" with bad lemma "verzekerd_zijn" → use "verzekerd"
+    for item in candidates:
+        lemma = item["text"].lower()
+        surface = item.get("_surface", "").lower()
+        if lemma != surface and lemma not in freq and surface in freq:
+            item["text"] = surface
+
+    # --- Step 4: Filter noise ---
+
+    # Failed compound rejoins leave spaces (e.g. "taal model", "AI gebruik", "mee denen").
+    # If _clean_lemma couldn't rejoin them, they're unverifiable garbage.
+    candidates = [item for item in candidates if " " not in item["text"]]
+
+    # Demonym/nationality adjectives (e.g. "Israëlisch", "Palestijns") — derived from
+    # proper nouns, not useful vocabulary items for learners
     candidates = [item for item in candidates
                   if not (item["pos"] == "ADJ" and item["text"][0:1].isupper())]
 
-    # Filter DET (articles) — too trivial for any level
+    # Determiners (de, het, een) — too trivial for any level
     candidates = [item for item in candidates if item["pos"] != "DET"]
 
-    # Deduplicate
+    # --- Step 5: Deduplicate ---
     seen = set()
     unique = []
     for item in candidates:
@@ -157,8 +210,9 @@ def extract(doc, lang: str, freq: dict[str, int], level: str = "A0") -> dict:
             seen.add(key)
             unique.append(item)
 
-    # Rank and score
+    # --- Step 6: Rank and score ---
     for item in unique:
+        item.pop("_surface", None)
         rank_key = item.pop("_rank_key", item["text"].lower())
         rank = freq.get(rank_key)
         item["rank"] = rank
