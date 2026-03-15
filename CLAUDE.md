@@ -42,6 +42,11 @@ Step 2: Phrase extraction + CEFR ranking (YAKE, frequency lists)
 → JSON candidates returned to caller (bot's LLM does translation)
 ```
 
+## Modal Config
+
+- `max_containers=1` — low traffic, single container is sufficient
+- CPU-only (`cpu=1`, `use_gpu=False`) — Stanza performs well on CPU for short texts; GPU containers are significantly more expensive on Modal
+
 ## Consumer
 
 YourDutchBot — called during lesson generation, in parallel with MCQ generation.
