@@ -97,23 +97,6 @@ def extract_separable_verbs(sent) -> list[dict]:
     return results
 
 
-def extract_noun_chunks(sent) -> list[dict]:
-    """Extract multi-word noun phrases from dependency parse.
-    Only keeps chunks where all dependents are ADJ or NOUN (no PROPN, NUM, DET)."""
-    chunks = []
-    for word in sent.words:
-        if word.upos == "NOUN" and word.deprel not in ("flat", "compound", "nmod"):
-            deps = [w for w in sent.words
-                    if w.head == word.id and w.deprel in ("amod", "flat", "compound")
-                    and w.upos in ("ADJ", "NOUN")]
-            if deps:
-                phrase_words = sorted(deps + [word], key=lambda w: w.id)
-                phrase = " ".join(w.lemma for w in phrase_words)
-                chunks.append({
-                    "text": phrase,
-                    "pos": "NOUN",
-                })
-    return chunks
 
 
 def _clean_lemma(text: str) -> str:
@@ -139,7 +122,6 @@ def extract(doc, lang: str, freq: dict[str, int], level: str = "A0") -> dict:
         if lang == "nl":
             candidates.extend(extract_separable_verbs(sent))
 
-        candidates.extend(extract_noun_chunks(sent))
 
     # Clean underscores from Stanza tokenizer
     for item in candidates:
