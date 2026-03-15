@@ -105,7 +105,7 @@ def extract(doc, lang: str, freq: dict[str, int], threshold: float = 0.5) -> dic
 
     for sent in doc.sentences:
         for word in sent.words:
-            if word.upos in ("NOUN", "VERB", "ADJ", "PROPN"):
+            if word.upos in ("NOUN", "VERB", "ADJ", "PROPN", "DET"):
                 candidates.append({"text": word.lemma, "pos": word.upos})
 
         if lang == "nl":
