@@ -43,11 +43,11 @@ The microservice loads all active language models at init time into a single con
 ## Architecture
 
 ```
-[Lesson text] → [NLP Microservice] → [Candidate JSON] → [LLM prompt] → [Vocabulary for user]
-                  (Steps 1-2)                              (Step 3, existing bot)
+[Lesson text] → [NLP Microservice] → [Candidate JSON] → [Bot]
+                  (Steps 0-2)
 ```
 
-The microservice handles Steps 1-2. Step 3 stays in the bot's existing LLM flow.
+The microservice handles Steps 0-2 and returns ranked candidates. Bot-side integration (LLM enrichment, translation, display) is covered in the YourDutchBot repo (`PRD-vocab-v4-integration.md`).
 
 ### Step 0: Text Trimming ✅
 
@@ -103,13 +103,9 @@ PhraseMachine is **not used** — it is English-only and does not handle the tar
 | Serbian  | Wikipedia frequency + CEFR adaptation (top-2000) |
 | Greek    | Wikipedia frequency + CEFR adaptation (top-2000) |
 
-### Step 3: LLM Enrichment (existing bot, not in microservice)
+### Step 3: LLM Enrichment — out of scope
 
-The bot sends the candidate list to the LLM with a prompt like:
-
-> "From these candidates, produce A2-level vocabulary: translate to [user language], add a simple definition and an example sentence from the original text."
-
-This step already exists in the bot. The microservice only provides better input.
+Bot-side integration (LLM prompt updates, translation, fallback). See YourDutchBot repo: `PRD-vocab-v4-integration.md`.
 
 ## API Contract
 
@@ -196,15 +192,7 @@ Vercel serverless functions have a 250MB compressed bundle limit. Stanza + PyTor
 
 ## Integration with Bot
 
-The bot calls the microservice during lesson generation (reading/listening tasks), before the vocabulary prompt:
-
-```
-1. Fetch news article
-2. LLM adapts text to A2 level
-3. POST /extract with adapted text  ← NEW
-4. LLM generates vocabulary using candidate list  ← IMPROVED (was: from scratch)
-5. Present vocabulary to user
-```
+Bot-side integration is out of scope for this repo. See YourDutchBot repo: `PRD-vocab-v4-integration.md`.
 
 ## Future: Level-Aware Filtering
 
