@@ -6,6 +6,7 @@ import logging
 import os
 import sys
 import warnings
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from statistics import mean, stdev
 
@@ -143,8 +144,8 @@ def main():
     client = OpenAI()
     console.print(f"[dim]Judge model: {JUDGE_MODEL}[/dim]\n")
 
-    # Run evaluations
-    results = []
+    # Run NLP pipeline (fast, sequential — Stanza is not thread-safe)
+    prepared = []
     for entry in texts:
         text = entry["text_path"].read_text().strip()
         baseline = json.loads(entry["baseline_path"].read_text())
@@ -154,20 +155,40 @@ def main():
         freq = freq_data[entry["lang"]]
 
         pipeline_lemmas = run_pipeline(text, entry["lang"], entry["level"], nlp, freq)
-
-        console.print(f"[dim]Judging {entry['name']}...[/dim]")
-        scores = judge(client, text, entry["level"], pipeline_lemmas, baseline_lemmas)
-
-        results.append({
+        prepared.append({
             "name": entry["name"],
             "level": entry["level"],
+            "text": text,
             "pipeline_lemmas": pipeline_lemmas,
             "baseline_lemmas": baseline_lemmas,
-            "score_a": scores["score_a"],
-            "score_b": scores["score_b"],
-            "delta": scores["score_a"] - scores["score_b"],
-            "reasoning": scores["reasoning"],
         })
+
+    # Judge in parallel (API-bound)
+    console.print(f"[dim]Judging {len(prepared)} texts in parallel...[/dim]")
+
+    def judge_entry(p):
+        scores = judge(client, p["text"], p["level"], p["pipeline_lemmas"], p["baseline_lemmas"])
+        return {**p, **scores}
+
+    results = []
+    with ThreadPoolExecutor(max_workers=5) as pool:
+        futures = {pool.submit(judge_entry, p): p["name"] for p in prepared}
+        for future in as_completed(futures):
+            name = futures[future]
+            r = future.result()
+            console.print(f"[dim]  {name} done[/dim]")
+            results.append({
+                "name": r["name"],
+                "level": r["level"],
+                "pipeline_lemmas": r["pipeline_lemmas"],
+                "baseline_lemmas": r["baseline_lemmas"],
+                "score_a": r["score_a"],
+                "score_b": r["score_b"],
+                "delta": r["score_a"] - r["score_b"],
+                "reasoning": r["reasoning"],
+            })
+
+    results.sort(key=lambda r: r["name"])
 
     # Results table
     table = Table(title="Benchmark Results")
