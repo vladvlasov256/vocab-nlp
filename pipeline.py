@@ -99,8 +99,22 @@ def extract_separable_verbs(sent) -> list[dict]:
 
 
 
-def _clean_lemma(text: str) -> str:
-    """Clean up Stanza lemma artifacts: underscores, extra whitespace."""
+# Dutch compound connectors for rejoining underscore-split lemmas
+_NL_CONNECTORS = ("", "s", "e", "en", "er")
+
+
+def _clean_lemma(text: str, freq: dict[str, int] | None = None) -> str:
+    """Clean Stanza lemma artifacts. If lemma has underscores, try to rejoin
+    as a compound word using Dutch connectors and validate against freq list."""
+    if "_" in text and freq is not None:
+        parts = text.split("_")
+        if len(parts) == 2:
+            a, b = parts[0].lower(), parts[1].lower()
+            for conn in _NL_CONNECTORS:
+                compound = a + conn + b
+                if compound in freq:
+                    return compound
+        # More than 2 parts or no match — just strip underscores
     return re.sub(r"[_]+", " ", text).strip()
 
 
@@ -123,9 +137,9 @@ def extract(doc, lang: str, freq: dict[str, int], level: str = "A0") -> dict:
             candidates.extend(extract_separable_verbs(sent))
 
 
-    # Clean underscores from Stanza tokenizer
+    # Clean underscores from Stanza tokenizer — try to rejoin compounds
     for item in candidates:
-        item["text"] = _clean_lemma(item["text"])
+        item["text"] = _clean_lemma(item["text"], freq)
 
     # Filter demonym/nationality adjectives (e.g. "Israëlisch", "Palestijns")
     candidates = [item for item in candidates
