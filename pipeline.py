@@ -199,10 +199,14 @@ def _clean_lemma(text: str, freq: dict[str, int] | None = None) -> str:
         parts = text.split("_")
         if len(parts) == 2:
             a, b = parts[0].lower(), parts[1].lower()
+            best, best_rank = None, float("inf")
             for conn in _NL_CONNECTORS:
                 compound = a + conn + b
-                if compound in freq:
-                    return compound
+                rank = freq.get(compound)
+                if rank is not None and rank < best_rank:
+                    best, best_rank = compound, rank
+            if best is not None:
+                return best
         # More than 2 parts or no match — just strip underscores
     return re.sub(r"[_]+", " ", text).strip()
 
