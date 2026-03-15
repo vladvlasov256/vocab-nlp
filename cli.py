@@ -252,9 +252,17 @@ class VocabApp(App):
                 table.add_row(item["text"], item["pos"], f"[{weight_style}]{w:.2f}[/{weight_style}]", band)
             return table
 
+        # Proper nouns panel
+        propn = result.get("proper_nouns", [])
+        propn_table = Table(show_lines=False, pad_edge=False, expand=True)
+        propn_table.add_column("Name", style="bold")
+        for item in propn:
+            propn_table.add_row(item["text"])
+
         panels = Columns([
             Panel(_make_table(above), title="Candidates", border_style="green"),
             Panel(_make_table(below), title="Filtered out", border_style="dim"),
+            Panel(propn_table, title="Proper nouns", border_style="cyan"),
         ], equal=True)
 
         log.write(panels)

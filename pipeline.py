@@ -117,10 +117,13 @@ def extract_noun_chunks(sent) -> list[dict]:
 def extract(doc, lang: str, freq: dict[str, int], level: str = "A0") -> dict:
     """Run Steps 1-2 on a Stanza doc. Returns the response dict."""
     candidates = []
+    proper_nouns = []
 
     for sent in doc.sentences:
         for word in sent.words:
-            if word.upos in ("NOUN", "VERB", "ADJ", "PROPN", "DET"):
+            if word.upos == "PROPN":
+                proper_nouns.append({"text": word.lemma, "pos": "PROPN"})
+            elif word.upos in ("NOUN", "VERB", "ADJ", "DET"):
                 candidates.append({"text": word.lemma, "pos": word.upos})
 
         if lang == "nl":
@@ -148,4 +151,13 @@ def extract(doc, lang: str, freq: dict[str, int], level: str = "A0") -> dict:
 
     unique.sort(key=lambda x: x["weight"], reverse=True)
 
-    return {"language": lang, "lemmas": unique}
+    # Deduplicate proper nouns
+    seen_propn = set()
+    unique_propn = []
+    for item in proper_nouns:
+        key = item["text"].lower()
+        if key not in seen_propn:
+            seen_propn.add(key)
+            unique_propn.append(item)
+
+    return {"language": lang, "lemmas": unique, "proper_nouns": unique_propn}
