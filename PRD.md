@@ -77,9 +77,9 @@ Two sub-steps:
 #### 2a. Candidate Extraction
 
 - **YAKE** (Yet Another Keyword Extractor) for language-agnostic keyphrase extraction (unigrams through trigrams, top 20-30)
-- **Noun chunks** from Stanza dependency parse
+- ✅ **Noun chunks** from Stanza dependency parse
 - **Language-specific rules:**
-  - Dutch: group particles (`advmod`) with verbs to reconstruct separable verbs; compound splitter for long nouns
+  - ✅ Dutch: group particles (`advmod`) with verbs to reconstruct separable verbs; compound splitter for long nouns
   - Turkish: morpheme-aware splitting for compounds
   - Serbian/Greek: NER + noun compound patterns
 
@@ -87,10 +87,10 @@ PhraseMachine is **not used** — it is English-only and does not handle the tar
 
 #### 2b. Ranking
 
-- **Exact match** against CEFR A2 frequency lists → score 1.0
+- ✅ **Exact match** against CEFR A2 frequency lists → score 1.0
 - **Partial match** for multiword phrases: percentage of component words found in A2 list
-- **Frequency proxy** fallback: corpus frequency rank (top-1000 = A1-A2, 1000-2000 = A2-B1)
-- Filter: threshold > 0.5, limit to top 15 items
+- ✅ **Frequency proxy** fallback: corpus frequency rank (top-1000 = A1-A2, 1000-2000 = A2-B1)
+- ✅ Filter: threshold > 0.5, limit to top 15 items
 
 **CEFR frequency lists per language:**
 
