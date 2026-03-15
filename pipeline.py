@@ -6,8 +6,15 @@ from pathlib import Path
 
 MAX_TEXT_BYTES = 4096
 MAX_LEMMAS = 15
-A2_RANK_CUTOFF = 2000  # top-2000 = A1-A2
-B1_RANK_CUTOFF = 5000  # 2000-5000 = A2-B1
+
+# Rank bands per CEFR level
+LEVEL_BANDS = {
+    "A0": {"known": 0,     "target": 500},
+    "A1": {"known": 500,   "target": 1500},
+    "A2": {"known": 1500,  "target": 3000},
+    "B1": {"known": 3000,  "target": 6000},
+}
+LEVELS = list(LEVEL_BANDS.keys())
 
 _modal_data = Path("/root/data")
 DATA_DIR = _modal_data if _modal_data.exists() else Path(__file__).parent / "data"
@@ -47,15 +54,23 @@ def load_freq_sr() -> dict[str, int]:
 FREQ_LOADERS = {"nl": load_freq_nl, "sr": load_freq_sr}
 
 
-def rank_to_weight(rank: int | None) -> float:
-    """Convert frequency rank to 0-1 weight. Lower rank = higher weight."""
+def rank_to_weight(rank: int | None, level: str = "A0") -> float:
+    """Score a word based on its frequency rank and the learner's level.
+
+    Words in the learner's "known" band score low (already learned).
+    Words in the "target" band score highest (should learn next).
+    Words beyond target are still useful but less relevant.
+    Unknown words get a moderate score (domain-specific vocab).
+    """
+    band = LEVEL_BANDS[level]
+
     if rank is None:
-        return 0.3
-    if rank <= A2_RANK_CUTOFF:
-        return 1.0
-    if rank <= B1_RANK_CUTOFF:
-        return 0.7 - 0.2 * (rank - A2_RANK_CUTOFF) / (B1_RANK_CUTOFF - A2_RANK_CUTOFF)
-    return 0.3
+        return 0.6  # unknown = potentially interesting domain vocab
+    if rank <= band["known"]:
+        return 0.3  # already known at this level
+    if rank <= band["target"]:
+        return 1.0  # target zone — learn these
+    return 0.6  # beyond target — still useful
 
 
 def extract_separable_verbs(sent) -> list[dict]:
@@ -99,7 +114,7 @@ def extract_noun_chunks(sent) -> list[dict]:
     return chunks
 
 
-def extract(doc, lang: str, freq: dict[str, int]) -> dict:
+def extract(doc, lang: str, freq: dict[str, int], level: str = "A0") -> dict:
     """Run Steps 1-2 on a Stanza doc. Returns the response dict."""
     candidates = []
 
@@ -126,8 +141,10 @@ def extract(doc, lang: str, freq: dict[str, int]) -> dict:
     for item in unique:
         rank_key = item.pop("_rank_key", item["text"].lower())
         rank = freq.get(rank_key)
-        item["weight"] = rank_to_weight(rank)
-        item["is_a2"] = rank is not None and rank <= A2_RANK_CUTOFF
+        item["rank"] = rank
+        item["weight"] = rank_to_weight(rank, level)
+        band = LEVEL_BANDS[level]
+        item["in_target"] = rank is not None and band["known"] < rank <= band["target"]
 
     unique.sort(key=lambda x: x["weight"], reverse=True)
 

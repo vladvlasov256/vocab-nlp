@@ -7,6 +7,7 @@ from pipeline import (
     DATA_DIR,
     FREQ_LOADERS,
     LANGUAGES,
+    LEVELS,
     MAX_LEMMAS,
     PROCESSORS,
     extract,
@@ -57,15 +58,17 @@ class VocabNlp:
 
         text = request_data.get("text", "")
         lang = request_data.get("lang", "")
+        level = request_data.get("level", "A0")
 
         if not text:
             return {"error": "'text' is required"}
         if lang not in self.pipelines:
             return {"error": f"Unsupported language '{lang}'. Supported: {list(self.pipelines.keys())}"}
+        if level not in LEVELS:
+            return {"error": f"Unsupported level '{level}'. Supported: {LEVELS}"}
 
         text = trim_text(text)
         doc = self.pipelines[lang](text)
-        result = extract(doc, lang, self.freq[lang])
-        # Filter for API consumers
+        result = extract(doc, lang, self.freq[lang], level=level)
         result["lemmas"] = [l for l in result["lemmas"] if l["weight"] > 0.5][:MAX_LEMMAS]
         return result

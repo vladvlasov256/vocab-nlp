@@ -26,7 +26,7 @@ from textual.widgets import Footer, Header, Input, RichLog
 
 import stanza
 
-from pipeline import FREQ_LOADERS, LANGUAGES, PROCESSORS, extract, trim_text
+from pipeline import FREQ_LOADERS, LANGUAGES, LEVELS, PROCESSORS, extract, trim_text
 
 
 class VocabApp(App):
@@ -42,6 +42,7 @@ class VocabApp(App):
     """
 
     BINDINGS = [
+        Binding("ctrl+e", "set_level", "Level"),
         Binding("ctrl+t", "set_threshold", "Threshold"),
         Binding("ctrl+l", "switch_lang", "Language"),
         Binding("ctrl+c", "quit", "Quit"),
@@ -52,6 +53,7 @@ class VocabApp(App):
     def __init__(self):
         super().__init__()
         self.lang = "nl"
+        self.level = "A0"
         self.threshold = 0.5
         self.nlp = None
         self.freq = None
@@ -79,7 +81,7 @@ class VocabApp(App):
         log.write(f"[dim][3/3] Loading frequency list...[/dim]")
         self.freq = FREQ_LOADERS[self.lang]()
 
-        log.write(f"[green]Ready.[/green] {len(self.freq)} frequency entries. Threshold: {self.threshold}\n")
+        log.write(f"[green]Ready.[/green] {len(self.freq)} entries | Level: {self.level} | Threshold: {self.threshold}\n")
         self.query_one("#text-input", Input).focus()
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
@@ -117,36 +119,39 @@ class VocabApp(App):
         log.write("")
 
         # Vocab tables
-        result = extract(doc, self.lang, self.freq)
+        result = extract(doc, self.lang, self.freq, level=self.level)
         all_lemmas = result["lemmas"]
 
         above = [item for item in all_lemmas if item["weight"] > self.threshold]
         below = [item for item in all_lemmas if item["weight"] <= self.threshold]
 
-        # Candidates panel
-        above_table = Table(show_lines=False, pad_edge=False, expand=True)
-        above_table.add_column("Lemma", style="bold")
-        above_table.add_column("POS", style="yellow")
-        above_table.add_column("Weight", justify="right")
+        def _make_table(items):
+            table = Table(show_lines=False, pad_edge=False, expand=True)
+            table.add_column("Lemma", style="bold")
+            table.add_column("POS", style="yellow")
+            table.add_column("Weight", justify="right")
+            table.add_column("Band", style="dim")
 
-        for item in above:
-            w = item["weight"]
-            weight_style = "green" if w >= 0.9 else "yellow" if w >= 0.6 else "red"
-            above_table.add_row(item["text"], item["pos"], f"[{weight_style}]{w:.2f}[/{weight_style}]")
-
-        # Filtered out panel
-        below_table = Table(show_lines=False, pad_edge=False, expand=True)
-        below_table.add_column("Lemma", style="bold")
-        below_table.add_column("POS", style="yellow")
-        below_table.add_column("Weight", justify="right")
-
-        for item in below:
-            w = item["weight"]
-            below_table.add_row(item["text"], item["pos"], f"[red]{w:.2f}[/red]")
+            for item in items:
+                w = item["weight"]
+                weight_style = "green" if w >= 0.9 else "yellow" if w >= 0.5 else "red"
+                from pipeline import LEVEL_BANDS
+                bands = LEVEL_BANDS[self.level]
+                rank = item.get("rank")
+                if rank is None:
+                    band = "?"
+                elif rank <= bands["known"]:
+                    band = "known"
+                elif rank <= bands["target"]:
+                    band = "target"
+                else:
+                    band = "beyond"
+                table.add_row(item["text"], item["pos"], f"[{weight_style}]{w:.2f}[/{weight_style}]", band)
+            return table
 
         panels = Columns([
-            Panel(above_table, title="Candidates", border_style="green"),
-            Panel(below_table, title="Filtered out", border_style="dim"),
+            Panel(_make_table(above), title="Candidates", border_style="green"),
+            Panel(_make_table(below), title="Filtered out", border_style="dim"),
         ], equal=True)
 
         log.write(panels)
@@ -157,6 +162,13 @@ class VocabApp(App):
         inp.value = ""
         inp.placeholder = f"Enter threshold (current: {self.threshold}):"
         inp._threshold_mode = True
+
+    def action_set_level(self) -> None:
+        inp = self.query_one("#text-input", Input)
+        inp.value = ""
+        choices = ", ".join(LEVELS)
+        inp.placeholder = f"Enter level ({choices}, current: {self.level}):"
+        inp._level_mode = True
 
     def action_switch_lang(self) -> None:
         inp = self.query_one("#text-input", Input)
@@ -185,6 +197,16 @@ class VocabApp(App):
                 log.write(f"[dim]Threshold set to {self.threshold}[/dim]\n")
             except ValueError:
                 pass
+            inp.clear()
+            return
+
+        if getattr(inp, "_level_mode", False):
+            inp._level_mode = False
+            inp.placeholder = "Enter text to analyze..."
+            if text.upper() in LEVELS:
+                self.level = text.upper()
+                log = self.query_one("#output", RichLog)
+                log.write(f"[dim]Level set to {self.level}[/dim]\n")
             inp.clear()
             return
 
