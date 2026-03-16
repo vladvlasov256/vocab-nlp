@@ -232,7 +232,7 @@ class VocabApp(App):
         above = [item for item in all_lemmas if item["weight"] > self.threshold]
         below = [item for item in all_lemmas if item["weight"] <= self.threshold]
 
-        bands = LANG_PRESETS[self.lang]["level_bands"][self.level]
+        bands = LANG_PRESETS[self.lang]["levels"][self.level]["band"]
 
         def _make_table(items):
             table = Table(show_lines=False, pad_edge=False, expand=True)

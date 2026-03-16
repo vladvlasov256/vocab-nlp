@@ -8,31 +8,31 @@ from pathlib import Path
 MAX_TEXT_BYTES = 4096
 MAX_LEMMAS = 15
 
-# Per-language presets: CEFR level bands + display name.
-# "known" = top N most frequent words (skip these, too easy)
-# "target" = words ranked up to this position (prioritize these)
-# Words beyond "target" still appear but score lower.
+# Per-language presets: CEFR level settings + display name.
+# band.known = top N most frequent words (skip these, too easy)
+# band.target = words ranked up to this position (prioritize these)
+# Words beyond target still appear but score lower.
 LANG_PRESETS = {
     "nl": {
         "name": "Dutch",
         "filter_propn_by_surface": True,
         "separable_verbs": True,
-        "level_bands": {
-            "A0": {"known": 0,     "target": 1000},
-            "A1": {"known": 500,   "target": 3000},
-            "A2": {"known": 1500,  "target": 5000},
-            "B1": {"known": 3000,  "target": 8000},
+        "levels": {
+            "A0": {"band": {"known": 0,     "target": 1000},  "adv_weight": 0.7},
+            "A1": {"band": {"known": 500,   "target": 3000},  "adv_weight": 0.7},
+            "A2": {"band": {"known": 1500,  "target": 5000},  "adv_weight": 1.0},
+            "B1": {"band": {"known": 3000,  "target": 8000},  "adv_weight": 1.0},
         },
     },
     "sr": {
         "name": "Serbian",
         "filter_propn_by_surface": True,
         "separable_verbs": False,
-        "level_bands": {
-            "A0": {"known": 0,     "target": 1500},
-            "A1": {"known": 200,   "target": 3000},
-            "A2": {"known": 500,   "target": 5000},
-            "B1": {"known": 2000,  "target": 8000},
+        "levels": {
+            "A0": {"band": {"known": 0,     "target": 1500},  "adv_weight": 0.7},
+            "A1": {"band": {"known": 200,   "target": 3000},  "adv_weight": 0.7},
+            "A2": {"band": {"known": 500,   "target": 5000},  "adv_weight": 1.0},
+            "B1": {"band": {"known": 2000,  "target": 8000},  "adv_weight": 1.0},
         },
     },
 }
@@ -152,7 +152,7 @@ def rank_to_weight(rank: int | None, lang: str = "nl", level: str = "A0") -> flo
     The 0.5 threshold in the API filters out known-band words (0.3),
     keeping target (1.0) and beyond/unknown (0.6).
     """
-    band = LANG_PRESETS[lang]["level_bands"][level]
+    band = LANG_PRESETS[lang]["levels"][level]["band"]
 
     if rank is None:
         return 0.6  # not in freq list — potentially interesting domain vocab
@@ -329,6 +329,8 @@ def extract(doc, lang: str, freq: dict[str, int], level: str = "A0") -> dict:
             unique.append(item)
 
     # --- Step 6: Rank and score ---
+    level_settings = LANG_PRESETS[lang]["levels"][level]
+    band = level_settings["band"]
     for item in unique:
         item.pop("_surface", None)
         item.pop("_sent_initial", None)
@@ -337,9 +339,8 @@ def extract(doc, lang: str, freq: dict[str, int], level: str = "A0") -> dict:
         item["rank"] = rank
         weight = rank_to_weight(rank, lang, level)
         if item["pos"] == "ADV":
-            weight *= 0.7
+            weight *= level_settings.get("adv_weight", 1.0)
         item["weight"] = weight
-        band = LANG_PRESETS[lang]["level_bands"][level]
         item["in_target"] = rank is not None and band["known"] < rank <= band["target"]
 
     unique.sort(key=lambda x: x["weight"], reverse=True)

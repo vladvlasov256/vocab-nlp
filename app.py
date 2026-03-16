@@ -57,7 +57,7 @@ class VocabNlp:
             return {"error": "'text' is required"}
         if lang not in self.pipelines:
             return {"error": f"Unsupported language '{lang}'. Supported: {list(self.pipelines.keys())}"}
-        supported_levels = list(LANG_PRESETS[lang]["level_bands"].keys())
+        supported_levels = list(LANG_PRESETS[lang]["levels"].keys())
         if level not in supported_levels:
             return {"error": f"Unsupported level '{level}'. Supported: {supported_levels}"}
 
