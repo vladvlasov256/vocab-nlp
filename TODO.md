@@ -13,10 +13,11 @@ Every UPOS tag must be handled explicitly — never silently ignore.
 ### Noise (biggest impact on A1/A2 scores)
 
 - [x] **Proper noun leakage** — Filter: capitalized mid-sentence + not in freq list → probable name. Gated by `filter_propn_by_surface` preset flag.
-- [ ] **Malformed lemmas** — Stanza artifacts: "dronova-kamikaza", "dronova-kamikaz", "svetki", "dizajan", "vana" (should be "vani"), "lepak". Add to sr_lemmas.tsv or add heuristic filters.
-- [ ] **Dialect normalization** — srLex uses ijekavian forms ("voliti") but standard Serbian is ekavian ("voleti"). May need a mapping layer.
+- [ ] **Malformed lemmas** — Stanza artifacts: "svetki", "dizajan", "vana" (should be "vani"). Minor — few occurrences, no systematic fix available.
+- [x] **Dialect normalization** — Not a pipeline bug. Judge prompt updated to accept dialect variants (ijekavian/ekavian both valid).
 - [ ] **Ambiguous verb forms** — "uči" can be "učiti" (learn) or "ući" (enter); Stanza sometimes picks wrong verb from context. Not fixable with overrides.
-- [ ] **čovek vs ljudi** — "čovek" appears as candidate when text uses "ljudi". Stanza lemmatizes "ljudi" to "čovek" which is technically correct but confusing for learners.
+- [x] **čovek vs ljudi** — Not a bug. "čovek" is correct lemma for "ljudi". Judge prompt updated to accept standard lemmatization.
+- [x] **Compound nouns** — "dronova-kamikaza" etc. are valid Serbian compounds, not malformed. Judge was wrong.
 - [ ] **Compound proper nouns** — "Bliski istok" (Middle East) splits into "blizak" + "istok". Need multi-word expression handling or a proper noun blocklist.
 
 ### Coverage

@@ -34,7 +34,7 @@ Collect NOUN, VERB, ADJ tokens, then apply heuristics:
 
 **Proper noun separation** — PROPN tokens go to a separate list, not mixed with vocabulary candidates. Additionally, Stanza sometimes mis-tags proper nouns as NOUN/ADJ. We catch these by checking if the surface form is capitalized mid-sentence and the lemma is absent from the frequency list — if both are true, the word is almost certainly a name (e.g. "zelenski", "iPhona") and gets filtered.
 
-**CEFR frequency ranking** — Each lemma is scored by its rank in a corpus frequency list (SUBTLEX-NL for Dutch, Wikipedia 50k for Serbian). Scoring is level-aware:
+**CEFR frequency ranking** — Each lemma is scored by its rank in a corpus frequency list (SUBTLEX-NL for Dutch, srLex 1.3 for Serbian). Scoring is level-aware:
 
 | Learner level | "Known" band | "Target" band | Effect |
 |---------------|-------------|---------------|--------|
@@ -111,14 +111,14 @@ uv run --group bench python bench/run.py --lang sr
 | A2 | 4.4 | 3.5 | +0.90 |
 | **Overall** | **4.4** | **3.0** | **+1.47** |
 
-### Serbian — Cohen's d = 0.92
+### Serbian — Cohen's d = 0.85
 
 | Level | Pipeline avg | LLM avg | Delta |
 |-------|-------------|---------|-------|
-| A0 | 4.4 | 2.2 | +2.20 |
-| A1 | 4.1 | 3.1 | +1.00 |
-| A2 | 3.9 | 3.6 | +0.30 |
-| **Overall** | **4.1** | **3.0** | **+1.17** |
+| A0 | 4.5 | 2.4 | +2.10 |
+| A1 | 4.2 | 3.3 | +0.90 |
+| A2 | 4.0 | 3.7 | +0.30 |
+| **Overall** | **4.2** | **3.1** | **+1.10** |
 
 ### Known issues
 
