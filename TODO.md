@@ -4,9 +4,9 @@
 
 Every UPOS tag must be handled explicitly — never silently ignore.
 
-- [ ] **ADV** — Add adverbs as candidates. Words like "mnogo", "često", "zajedno" are useful vocab for learners. Validate against benchmarks before enabling.
-- [ ] **PRON** — Consider teaching pronouns at A0 (ja, ti, on/ona). Currently dropped.
-- [ ] **ADP** — Prepositions (u, na, za) may be worth surfacing at A0. Currently dropped.
+- [x] **ADV** — Added adverbs as candidates.
+- [x] **PRON** — Added as candidates. Filtered by frequency bands at A1+.
+- [x] **ADP** — Added as candidates. Filtered by frequency bands at A1+.
 
 ## Serbian
 

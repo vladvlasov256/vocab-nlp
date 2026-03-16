@@ -246,14 +246,11 @@ def extract(doc, lang: str, freq: dict[str, int], level: str = "A0") -> dict:
     # Candidates: extracted and ranked for learners
     # Separate lists: shown in their own card (proper nouns, numbers)
     # Dropped: function words / structural tokens, not useful for learners
-    _CANDIDATE_POS = {"NOUN", "VERB", "ADJ", "DET"}
+    _CANDIDATE_POS = {"NOUN", "VERB", "ADJ", "ADV", "ADP", "PRON", "DET"}
     _DROPPED_POS = {
-        "ADV",    # adverbs (mnogo, često) — TODO: add as candidates
-        "ADP",    # prepositions (u, na, za) — function words
         "AUX",    # auxiliary verbs (je, sam, će) — function words
         "CCONJ",  # coordinating conjunctions (i, ali, ili)
         "SCONJ",  # subordinating conjunctions (da, jer, kad)
-        "PRON",   # pronouns (ja, on, to)
         "PART",   # particles (ne, li)
         "INTJ",   # interjections — rare
         "PUNCT",  # punctuation
