@@ -2,7 +2,7 @@
 
 Multilingual NLP microservice that extracts vocabulary candidates from short texts. Built for language learning apps targeting A0-B1 learners.
 
-> Deterministic, fast, and cheaper than pure LLM extraction. Beats GPT vocab picking by Cohen's d = 1.51 on a 30-text Dutch benchmark.
+> Deterministic, fast, and cheaper than pure LLM extraction. Beats GPT vocab picking by Cohen's d = 1.97 on a 30-text Dutch benchmark.
 
 ![CLI screenshot](docs/cli.png)
 
@@ -102,23 +102,23 @@ uv run --group bench python bench/run.py --lang nl
 uv run --group bench python bench/run.py --lang sr
 ```
 
-### Dutch — Cohen's d = 1.51
+### Dutch — Cohen's d = 1.97
 
 | Level | Pipeline avg | LLM avg | Delta |
 |-------|-------------|---------|-------|
-| A0 | 4.6 | 2.4 | +2.20 |
-| A1 | 4.3 | 3.0 | +1.30 |
-| A2 | 4.4 | 3.5 | +0.90 |
-| **Overall** | **4.4** | **3.0** | **+1.47** |
+| A0 | 4.8 | 2.4 | +2.40 |
+| A1 | 4.6 | 3.1 | +1.50 |
+| A2 | 4.4 | 3.3 | +1.10 |
+| **Overall** | **4.6** | **2.9** | **+1.67** |
 
-### Serbian — Cohen's d = 0.89
+### Serbian — Cohen's d = 1.30
 
 | Level | Pipeline avg | LLM avg | Delta |
 |-------|-------------|---------|-------|
-| A0 | 4.6 | 2.3 | +2.30 |
-| A1 | 4.3 | 3.2 | +1.10 |
-| A2 | 3.8 | 3.6 | +0.20 |
-| **Overall** | **4.2** | **3.0** | **+1.20** |
+| A0 | 4.8 | 2.6 | +2.20 |
+| A1 | 4.6 | 2.9 | +1.70 |
+| A2 | 4.4 | 4.0 | +0.40 |
+| **Overall** | **4.6** | **3.2** | **+1.43** |
 
 ### Known issues
 
