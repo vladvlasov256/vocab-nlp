@@ -15,6 +15,7 @@ MAX_LEMMAS = 15
 LANG_PRESETS = {
     "nl": {
         "name": "Dutch",
+        "filter_propn_by_surface": True,
         "level_bands": {
             "A0": {"known": 0,     "target": 1000},
             "A1": {"known": 500,   "target": 3000},
@@ -24,6 +25,7 @@ LANG_PRESETS = {
     },
     "sr": {
         "name": "Serbian",
+        "filter_propn_by_surface": True,
         "level_bands": {
             "A0": {"known": 0,     "target": 1500},
             "A1": {"known": 200,   "target": 3000},
@@ -266,7 +268,7 @@ def extract(doc, lang: str, freq: dict[str, int], level: str = "A0") -> dict:
             elif word.upos == "NUM":
                 numbers.append({"text": word.text, "pos": "NUM"})
             elif word.upos in _CANDIDATE_POS:
-                candidates.append({"text": word.lemma, "pos": word.upos, "_surface": word.text})
+                candidates.append({"text": word.lemma, "pos": word.upos, "_surface": word.text, "_sent_initial": word.id == 1})
             elif word.upos not in _DROPPED_POS:
                 logging.getLogger("pipeline").warning(f"Unhandled POS: {word.upos} for '{word.text}'")
 
@@ -306,6 +308,16 @@ def extract(doc, lang: str, freq: dict[str, int], level: str = "A0") -> dict:
     # Numeric tokens (e.g. "2026.", "26.", "1.") — not vocabulary
     candidates = [item for item in candidates if not re.match(r"^\d+\.?$", item["text"])]
 
+    # Probable proper nouns mis-tagged as NOUN/ADJ by Stanza.
+    # If the surface form is capitalized mid-sentence and the lemma isn't in
+    # the frequency list, it's almost certainly a name (e.g. "zelenski", "iPhona").
+    # Sentence-initial words are skipped since capitalization is ambiguous there.
+    if LANG_PRESETS[lang].get("filter_propn_by_surface", False):
+        candidates = [item for item in candidates
+                      if not (item.get("_surface", "")[0:1].isupper()
+                              and not item.get("_sent_initial", False)
+                              and item["text"].lower() not in freq)]
+
     # --- Step 5: Deduplicate ---
     seen = set()
     unique = []
@@ -318,6 +330,7 @@ def extract(doc, lang: str, freq: dict[str, int], level: str = "A0") -> dict:
     # --- Step 6: Rank and score ---
     for item in unique:
         item.pop("_surface", None)
+        item.pop("_sent_initial", None)
         rank_key = item.pop("_rank_key", item["text"].lower())
         rank = freq.get(rank_key)
         item["rank"] = rank

@@ -32,7 +32,7 @@ Collect NOUN, VERB, ADJ tokens, then apply heuristics:
 
 **Demonym filtering** — Uppercase adjectives like "Israëlisch", "Palestijns" are filtered out. These are derived from proper nouns and aren't useful vocabulary items.
 
-**Proper noun separation** — PROPN tokens go to a separate list, not mixed with vocabulary candidates.
+**Proper noun separation** — PROPN tokens go to a separate list, not mixed with vocabulary candidates. Additionally, Stanza sometimes mis-tags proper nouns as NOUN/ADJ. We catch these by checking if the surface form is capitalized mid-sentence and the lemma is absent from the frequency list — if both are true, the word is almost certainly a name (e.g. "zelenski", "iPhona") and gets filtered.
 
 **CEFR frequency ranking** — Each lemma is scored by its rank in a corpus frequency list (SUBTLEX-NL for Dutch, Wikipedia 50k for Serbian). Scoring is level-aware:
 
@@ -137,6 +137,7 @@ uv run --group bench python bench/run.py --lang sr
 |----------|------|--------|---------------|-----------------|
 | Dutch | `nl` | Active | SUBTLEX-NL (400k lemmas) | Wiktionary via kaikki.org (370k) |
 | Serbian | `sr` | Active | srLex 1.3 (105k lemmas) | srLex 1.3 (1.7M) |
+| German | `de` | Planned | — | — |
 | Turkish | `tr` | Planned | — | — |
 | Greek | `el` | Planned | — | — |
 
