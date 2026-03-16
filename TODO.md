@@ -10,10 +10,19 @@ Every UPOS tag must be handled explicitly — never silently ignore.
 
 ## Serbian
 
-- [ ] **Proper noun leakage** — Stanza sometimes tags proper nouns as NOUN/ADJ ("zelenski", "iPhona", "pokemon"). Cross-check against PROPN stems or capitalized surface forms.
-- [ ] **Malformed lemmas** — Stanza produces artifacts like "dronova-kamikaza", "uNConferenca", "svetki". Need sr_lemmas.tsv overrides or heuristic filters.
-- [ ] **Compound proper nouns** — "Bliski istok" (Middle East) gets split into "blizak" + "istok". Need multi-word expression handling.
-- [ ] **Band tuning** — Current Serbian bands are a first guess. Re-run benchmarks after noise fixes and adjust.
+### Noise (biggest impact on A1/A2 scores)
+
+- [ ] **Proper noun leakage** — Stanza mis-tags proper nouns as NOUN/ADJ: "zelenski", "iPhona", "pokemon", "delhija", "uNConferenca". Cross-check against PROPN stems or capitalized surface forms.
+- [ ] **Malformed lemmas** — Stanza artifacts: "dronova-kamikaza", "dronova-kamikaz", "svetki", "dizajan", "vana" (should be "vani"), "lepak". Add to sr_lemmas.tsv or add heuristic filters.
+- [ ] **Dialect normalization** — srLex uses ijekavian forms ("voliti") but standard Serbian is ekavian ("voleti"). May need a mapping layer.
+- [ ] **Ambiguous verb forms** — "uči" can be "učiti" (learn) or "ući" (enter); Stanza sometimes picks wrong verb from context. Not fixable with overrides.
+- [ ] **čovek vs ljudi** — "čovek" appears as candidate when text uses "ljudi". Stanza lemmatizes "ljudi" to "čovek" which is technically correct but confusing for learners.
+- [ ] **Compound proper nouns** — "Bliski istok" (Middle East) splits into "blizak" + "istok". Need multi-word expression handling or a proper noun blocklist.
+
+### Coverage (A2 loses to LLM baseline at -1.10)
+
+- [ ] **A2 known band too aggressive** — Known=1000 filters core words: pomoć, tehnologija, novac, zemlja, problem, želeti, razumeti, saradnja. Lower to ~500.
+- [ ] **Re-tune all bands after noise fixes** — Noise fixes alone should lift scores; re-benchmark before further band changes.
 
 ## Dutch
 
