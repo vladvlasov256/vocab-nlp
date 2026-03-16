@@ -95,11 +95,14 @@ Displays three panels: **Candidates** (above threshold), **Filtered out** (below
 
 ## Benchmark
 
-30 Dutch texts (10 per level: A0, A1, A2) evaluated by GPT-5 as blind judge. Pipeline vocab list vs LLM baseline, scored 1-5 on relevance, coverage, and noise. Cohen's d = 1.51 (large effect).
+30 texts per language (10 per level: A0, A1, A2) evaluated by GPT-5 as blind judge. Pipeline vocab list vs LLM baseline, scored 1-5 on relevance, coverage, and noise.
 
 ```bash
-uv run --group bench python bench/run.py
+uv run --group bench python bench/run.py --lang nl
+uv run --group bench python bench/run.py --lang sr
 ```
+
+### Dutch — Cohen's d = 1.51
 
 | Level | Pipeline avg | LLM avg | Delta |
 |-------|-------------|---------|-------|
@@ -108,10 +111,25 @@ uv run --group bench python bench/run.py
 | A2 | 4.4 | 3.5 | +0.90 |
 | **Overall** | **4.4** | **3.0** | **+1.47** |
 
+### Serbian — Cohen's d = 0.16
+
+| Level | Pipeline avg | LLM avg | Delta |
+|-------|-------------|---------|-------|
+| A0 | 4.2 | 2.1 | +2.10 |
+| A1 | 3.6 | 3.7 | -0.10 |
+| A2 | 3.2 | 4.3 | -1.10 |
+| **Overall** | **3.7** | **3.4** | **+0.30** |
+
 ### Known issues
 
+**Dutch:**
 - **"vroeger" lemmatized as "vroeg"** — Stanza and Wiktionary both treat "vroeger" as the comparative of "vroeg" (early), but in most contexts it's a separate word meaning "formerly." No clean fix without word-sense disambiguation.
 - **Common verbs filtered at A2** — verbs like "veranderen" (rank 626) fall in the A2 known band and get filtered, but a judge considers them useful. Narrowing the known band reintroduces noise.
+
+**Serbian:**
+- **Numeric tokens leaking** — "2026.", "26.", "1." pass POS filters and appear as candidates.
+- **Malformed lemmas** — Stanza produces artifacts like "dronova-kamikaza", "uNConferenca", "svetki" without lemma overrides to catch them.
+- **Known bands too aggressive at A1/A2** — srLex web corpus ranks common words higher than expected, filtering out words A1/A2 learners still need (pomoć, tehnologija, zemlja).
 
 ## Languages
 
