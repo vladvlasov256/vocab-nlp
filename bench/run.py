@@ -46,6 +46,8 @@ Score each list 1-5 on:
 - **Coverage**: Does the list capture the important vocabulary from the text?
 - **Noise**: Are there false picks — trivial words, proper nouns, misspellings, or malformed entries?
 
+Accept dialect variants as correct. Accept standard lemmatization even when the lemma form differs from the surface form in the text.
+
 Respond with ONLY valid JSON, no markdown:
 {{"score_a": <int 1-5>, "score_b": <int 1-5>, "reasoning": "<1-2 sentences>"}}
 """
