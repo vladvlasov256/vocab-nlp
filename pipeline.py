@@ -240,6 +240,23 @@ def extract(doc, lang: str, freq: dict[str, int], level: str = "A0") -> dict:
     propn_stems = set()
 
     # --- Step 1: Collect tokens by POS ---
+    # Every UPOS must be handled explicitly — never silently ignore a tag.
+    # Candidates: extracted and ranked for learners
+    # Separate lists: shown in their own card (proper nouns, numbers)
+    # Dropped: function words / structural tokens, not useful for learners
+    _CANDIDATE_POS = {"NOUN", "VERB", "ADJ", "DET"}
+    _DROPPED_POS = {
+        "ADP",    # prepositions (u, na, za) — function words
+        "AUX",    # auxiliary verbs (je, sam, će) — function words
+        "CCONJ",  # coordinating conjunctions (i, ali, ili)
+        "SCONJ",  # subordinating conjunctions (da, jer, kad)
+        "PRON",   # pronouns (ja, on, to)
+        "PART",   # particles (ne, li)
+        "INTJ",   # interjections — rare
+        "PUNCT",  # punctuation
+        "SYM",    # symbols
+        "X",      # foreign/other
+    }
     for sent in doc.sentences:
         for word in sent.words:
             if word.upos == "PROPN":
@@ -247,8 +264,10 @@ def extract(doc, lang: str, freq: dict[str, int], level: str = "A0") -> dict:
                 propn_stems.add(word.lemma.lower())
             elif word.upos == "NUM":
                 numbers.append({"text": word.text, "pos": "NUM"})
-            elif word.upos in ("NOUN", "VERB", "ADJ", "DET"):
+            elif word.upos in _CANDIDATE_POS:
                 candidates.append({"text": word.lemma, "pos": word.upos, "_surface": word.text})
+            elif word.upos not in _DROPPED_POS:
+                logging.getLogger("pipeline").warning(f"Unhandled POS: {word.upos} for '{word.text}'")
 
         # Dutch separable verbs: "belt...op" → "opbellen"
         if lang == "nl":
