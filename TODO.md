@@ -5,8 +5,8 @@
 Every UPOS tag must be handled explicitly — never silently ignore.
 
 - [x] **ADV** — Added adverbs as candidates.
-- [x] **PRON** — Added as candidates. Filtered by frequency bands at A1+.
-- [x] **ADP** — Added as candidates. Filtered by frequency bands at A1+.
+- [x] **PRON** — Tested as candidates, dropped d from 0.85→0.46. Function words take up slots and get flagged as noise. Explicitly dropped.
+- [x] **ADP** — Same result as PRON. Explicitly dropped.
 
 ## Serbian
 

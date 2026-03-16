@@ -24,7 +24,7 @@ Tokenize, POS-tag, lemmatize, and dependency-parse the text. CPU-only, <1s for 1
 
 ### Step 2: Extract & Rank
 
-Collect NOUN, VERB, ADJ, ADV, ADP, PRON tokens, then apply heuristics. NUM and PROPN go to separate lists. Function words (ADP, PRON) are naturally filtered at higher CEFR levels by frequency bands.
+Collect NOUN, VERB, ADJ, ADV tokens, then apply heuristics. NUM and PROPN go to separate lists. Function words (ADP, PRON, AUX, CONJ) are explicitly dropped — tested as candidates but they take up slots and get flagged as noise (d dropped 0.85→0.46).
 
 **Separable verb reconstruction** (Dutch) — Stanza marks verb particles with `compound:prt`. "Hij belt zijn moeder op" → particle "op" + verb "bellen" → reconstructed lemma "opbellen".
 
