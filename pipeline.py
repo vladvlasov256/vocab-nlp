@@ -25,10 +25,10 @@ LANG_PRESETS = {
     "sr": {
         "name": "Serbian",
         "level_bands": {
-            "A0": {"known": 0,     "target": 1000},
-            "A1": {"known": 500,   "target": 3000},
-            "A2": {"known": 1500,  "target": 5000},
-            "B1": {"known": 3000,  "target": 8000},
+            "A0": {"known": 0,     "target": 1500},
+            "A1": {"known": 200,   "target": 3000},
+            "A2": {"known": 1000,  "target": 5000},
+            "B1": {"known": 2000,  "target": 8000},
         },
     },
 }
