@@ -16,6 +16,7 @@ LANG_PRESETS = {
     "nl": {
         "name": "Dutch",
         "filter_propn_by_surface": True,
+        "separable_verbs": True,
         "level_bands": {
             "A0": {"known": 0,     "target": 1000},
             "A1": {"known": 500,   "target": 3000},
@@ -26,6 +27,7 @@ LANG_PRESETS = {
     "sr": {
         "name": "Serbian",
         "filter_propn_by_surface": True,
+        "separable_verbs": False,
         "level_bands": {
             "A0": {"known": 0,     "target": 1500},
             "A1": {"known": 200,   "target": 3000},
@@ -271,8 +273,8 @@ def extract(doc, lang: str, freq: dict[str, int], level: str = "A0") -> dict:
             elif word.upos not in _DROPPED_POS:
                 logging.getLogger("pipeline").warning(f"Unhandled POS: {word.upos} for '{word.text}'")
 
-        # Dutch separable verbs: "belt...op" → "opbellen"
-        if lang == "nl":
+        # Separable verbs: "belt...op" → "opbellen" (Dutch, German)
+        if LANG_PRESETS[lang].get("separable_verbs", False):
             candidates.extend(extract_separable_verbs(sent))
 
     # --- Step 2: Clean compound lemmas ---
