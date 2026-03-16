@@ -27,7 +27,7 @@ from textual.widgets import Footer, Header, Input, OptionList, RichLog
 
 import stanza  # noqa: F401 — must import before Textual to apply tqdm patch above
 
-from pipeline import FREQ_LOADERS, LANGUAGES, LEVEL_BANDS, LEVELS, create_stanza_pipeline, extract, trim_text
+from pipeline import FREQ_LOADERS, LANG_PRESETS, LANGUAGES, LEVELS, create_stanza_pipeline, extract, trim_text
 
 
 class LevelPicker(ModalScreen[str]):
@@ -242,7 +242,7 @@ class VocabApp(App):
         above = [item for item in all_lemmas if item["weight"] > self.threshold]
         below = [item for item in all_lemmas if item["weight"] <= self.threshold]
 
-        bands = LEVEL_BANDS[self.level]
+        bands = LANG_PRESETS[self.lang]["level_bands"][self.level]
 
         def _make_table(items):
             table = Table(show_lines=False, pad_edge=False, expand=True)

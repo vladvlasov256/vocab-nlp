@@ -19,7 +19,7 @@ from rich.console import Console
 from rich.table import Table
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from pipeline import FREQ_LOADERS, create_stanza_pipeline, extract, trim_text
+from pipeline import FREQ_LOADERS, LANG_PRESETS, create_stanza_pipeline, extract, trim_text
 
 BENCH_DIR = Path(__file__).resolve().parent
 TEXTS_DIR = BENCH_DIR / "texts"
@@ -28,7 +28,7 @@ BASELINE_DIR = BENCH_DIR / "baseline"
 JUDGE_MODEL = "gpt-5"
 
 JUDGE_PROMPT = """\
-You are evaluating vocabulary lists extracted from a short Dutch text for a {level} language learner.
+You are evaluating vocabulary lists extracted from a short {language} text for a {level} language learner.
 
 ## Text
 {text}
@@ -90,9 +90,11 @@ def run_pipeline(text: str, lang: str, level: str, nlp, freq) -> list[str]:
     return lemmas
 
 
-def judge(client: OpenAI, text: str, level: str, pipeline_lemmas: list[str], baseline_lemmas: list[str]) -> dict:
+def judge(client: OpenAI, text: str, lang: str, level: str, pipeline_lemmas: list[str], baseline_lemmas: list[str]) -> dict:
     """Ask judge LLM to score both lists."""
+    language = LANG_PRESETS[lang]["name"]
     prompt = JUDGE_PROMPT.format(
+        language=language,
         level=level,
         text=text,
         list_a=", ".join(pipeline_lemmas),
@@ -156,6 +158,7 @@ def main():
         pipeline_lemmas = run_pipeline(text, entry["lang"], entry["level"], nlp, freq)
         prepared.append({
             "name": entry["name"],
+            "lang": entry["lang"],
             "level": entry["level"],
             "text": text,
             "pipeline_lemmas": pipeline_lemmas,
@@ -166,7 +169,7 @@ def main():
     console.print(f"[dim]Judging {len(prepared)} texts in parallel...[/dim]")
 
     def judge_entry(p):
-        scores = judge(client, p["text"], p["level"], p["pipeline_lemmas"], p["baseline_lemmas"])
+        scores = judge(client, p["text"], p["lang"], p["level"], p["pipeline_lemmas"], p["baseline_lemmas"])
         return {**p, **scores}
 
     results = []

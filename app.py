@@ -6,8 +6,8 @@ from fastapi import Header, HTTPException
 from pipeline import (
     DATA_DIR,
     FREQ_LOADERS,
+    LANG_PRESETS,
     LANGUAGES,
-    LEVELS,
     MAX_LEMMAS,
     create_stanza_pipeline,
     extract,
@@ -57,8 +57,9 @@ class VocabNlp:
             return {"error": "'text' is required"}
         if lang not in self.pipelines:
             return {"error": f"Unsupported language '{lang}'. Supported: {list(self.pipelines.keys())}"}
-        if level not in LEVELS:
-            return {"error": f"Unsupported level '{level}'. Supported: {LEVELS}"}
+        supported_levels = list(LANG_PRESETS[lang]["level_bands"].keys())
+        if level not in supported_levels:
+            return {"error": f"Unsupported level '{level}'. Supported: {supported_levels}"}
 
         text = trim_text(text)
         doc = self.pipelines[lang](text)

@@ -8,23 +8,36 @@ from pathlib import Path
 MAX_TEXT_BYTES = 4096
 MAX_LEMMAS = 15
 
-# Rank bands per CEFR level — defines what a learner at each level
-# is expected to already know vs. what they should learn next.
+# Per-language presets: CEFR level bands + display name.
 # "known" = top N most frequent words (skip these, too easy)
 # "target" = words ranked up to this position (prioritize these)
 # Words beyond "target" still appear but score lower.
-LEVEL_BANDS = {
-    "A0": {"known": 0,     "target": 1000},
-    "A1": {"known": 500,   "target": 3000},
-    "A2": {"known": 1500,  "target": 5000},
-    "B1": {"known": 3000,  "target": 8000},
+LANG_PRESETS = {
+    "nl": {
+        "name": "Dutch",
+        "level_bands": {
+            "A0": {"known": 0,     "target": 1000},
+            "A1": {"known": 500,   "target": 3000},
+            "A2": {"known": 1500,  "target": 5000},
+            "B1": {"known": 3000,  "target": 8000},
+        },
+    },
+    "sr": {
+        "name": "Serbian",
+        "level_bands": {
+            "A0": {"known": 0,     "target": 1000},
+            "A1": {"known": 500,   "target": 3000},
+            "A2": {"known": 1500,  "target": 5000},
+            "B1": {"known": 3000,  "target": 8000},
+        },
+    },
 }
-LEVELS = list(LEVEL_BANDS.keys())
+LANGUAGES = list(LANG_PRESETS.keys())
+LEVELS = list(LANG_PRESETS["nl"]["level_bands"].keys())
 
 _modal_data = Path("/root/data")
 DATA_DIR = _modal_data if _modal_data.exists() else Path(__file__).parent / "data"
 PROCESSORS = "tokenize,pos,lemma,depparse"
-LANGUAGES = ["nl", "sr"]
 
 
 def trim_text(text: str) -> str:
@@ -124,7 +137,7 @@ def create_stanza_pipeline(lang: str, verbose: bool = False):
     return nlp
 
 
-def rank_to_weight(rank: int | None, level: str = "A0") -> float:
+def rank_to_weight(rank: int | None, lang: str = "nl", level: str = "A0") -> float:
     """Score a word by frequency rank relative to learner level.
 
     Returns:
@@ -135,7 +148,7 @@ def rank_to_weight(rank: int | None, level: str = "A0") -> float:
     The 0.5 threshold in the API filters out known-band words (0.3),
     keeping target (1.0) and beyond/unknown (0.6).
     """
-    band = LEVEL_BANDS[level]
+    band = LANG_PRESETS[lang]["level_bands"][level]
 
     if rank is None:
         return 0.6  # not in freq list — potentially interesting domain vocab
@@ -282,8 +295,8 @@ def extract(doc, lang: str, freq: dict[str, int], level: str = "A0") -> dict:
         rank_key = item.pop("_rank_key", item["text"].lower())
         rank = freq.get(rank_key)
         item["rank"] = rank
-        item["weight"] = rank_to_weight(rank, level)
-        band = LEVEL_BANDS[level]
+        item["weight"] = rank_to_weight(rank, lang, level)
+        band = LANG_PRESETS[lang]["level_bands"][level]
         item["in_target"] = rank is not None and band["known"] < rank <= band["target"]
 
     unique.sort(key=lambda x: x["weight"], reverse=True)
