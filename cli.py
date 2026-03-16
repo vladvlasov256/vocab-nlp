@@ -30,14 +30,14 @@ import stanza  # noqa: F401 — must import before Textual to apply tqdm patch a
 from pipeline import FREQ_LOADERS, LANG_PRESETS, LANGUAGES, LEVELS, create_stanza_pipeline, extract, trim_text
 
 
-class LevelPicker(ModalScreen[str]):
-    """Modal popup for selecting learner level."""
+class ListPicker(ModalScreen[str]):
+    """Generic modal popup for selecting from a list of options."""
 
     CSS = """
-    LevelPicker {
+    ListPicker {
         align: center middle;
     }
-    #level-list {
+    #picker-list {
         width: 20;
         height: auto;
         max-height: 10;
@@ -48,22 +48,24 @@ class LevelPicker(ModalScreen[str]):
 
     BINDINGS = [Binding("escape", "dismiss('')", "Cancel")]
 
-    def __init__(self, current: str):
+    def __init__(self, options: list[str], current: str):
         super().__init__()
+        self.options = options
         self.current = current
 
     def compose(self) -> ComposeResult:
-        options = OptionList(*LEVELS, id="level-list")
-        yield options
+        yield OptionList(*self.options, id="picker-list")
 
     def on_mount(self) -> None:
-        ol = self.query_one("#level-list", OptionList)
-        idx = LEVELS.index(self.current) if self.current in LEVELS else 0
+        ol = self.query_one("#picker-list", OptionList)
+        idx = self.options.index(self.current) if self.current in self.options else 0
         ol.highlighted = idx
         ol.focus()
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
         self.dismiss(str(event.option.prompt))
+
+
 
 
 HISTORY_FILE = Path.home() / ".local" / "share" / "vocab-nlp" / "history.txt"
@@ -149,7 +151,7 @@ class VocabApp(App):
         self.threshold = 0.5
         self.nlp = None
         self.freq = None
-        self._input_mode = None  # "threshold", "level", "lang", or None
+        self._input_mode = None  # "threshold" or None
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -188,18 +190,6 @@ class VocabApp(App):
             except ValueError:
                 pass
             inp.clear()
-            return
-
-        if self._input_mode == "lang":
-            self._input_mode = None
-            inp.placeholder = "Enter text to analyze..."
-            if text in LANGUAGES:
-                self.lang = text
-                self.nlp = None
-                inp.clear()
-                self.load_pipeline()
-            else:
-                inp.clear()
             return
 
         if not text or not self.nlp:
@@ -295,13 +285,16 @@ class VocabApp(App):
                 log = self.query_one("#output", RichLog)
                 log.write(f"[dim]Level set to {self.level}[/dim]\n")
 
-        self.push_screen(LevelPicker(self.level), on_level_selected)
+        self.push_screen(ListPicker(LEVELS, self.level), on_level_selected)
 
     def action_switch_lang(self) -> None:
-        inp = self.query_one("#text-input", HistoryInput)
-        inp.value = ""
-        inp.placeholder = f"Language ({', '.join(LANGUAGES)}):"
-        self._input_mode = "lang"
+        def on_lang_selected(lang: str) -> None:
+            if lang and lang != self.lang:
+                self.lang = lang
+                self.nlp = None
+                self.load_pipeline()
+
+        self.push_screen(ListPicker(LANGUAGES, self.lang), on_lang_selected)
 
 
 def main():
