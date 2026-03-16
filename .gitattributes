@@ -1,3 +1,5 @@
+data/nl_freq.csv filter=lfs diff=lfs merge=lfs -text
+data/sr_lemmas.tsv filter=lfs diff=lfs merge=lfs -text
 data/nl_lemmas.tsv filter=lfs diff=lfs merge=lfs -text
 data/nl.csv filter=lfs diff=lfs merge=lfs -text
 *.png filter=lfs diff=lfs merge=lfs -text

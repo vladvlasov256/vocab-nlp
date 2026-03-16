@@ -115,12 +115,12 @@ uv run --group bench python bench/run.py
 
 ## Languages
 
-| Language | Code | Status | Frequency list |
-|----------|------|--------|---------------|
-| Dutch | `nl` | Active | SUBTLEX-NL (400k lemmas) |
-| Serbian | `sr` | Active | Wikipedia 50k |
-| Turkish | `tr` | Planned | — |
-| Greek | `el` | Planned | — |
+| Language | Code | Status | Frequency list | Lemma overrides |
+|----------|------|--------|---------------|-----------------|
+| Dutch | `nl` | Active | SUBTLEX-NL (400k lemmas) | Wiktionary via kaikki.org (370k) |
+| Serbian | `sr` | Active | srLex 1.3 (105k lemmas) | srLex 1.3 (1.7M) |
+| Turkish | `tr` | Planned | — | — |
+| Greek | `el` | Planned | — | — |
 
 ## Setup
 

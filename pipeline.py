@@ -53,7 +53,7 @@ def load_freq_nl() -> dict[str, int]:
     Used for CEFR scoring and as ground truth for compound validation.
     """
     freq = {}
-    with open(DATA_DIR / "nl.csv", encoding="utf-8") as f:
+    with open(DATA_DIR / "nl_freq.csv", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for rank, row in enumerate(reader, 1):
             lemma = row.get("dominant.pos.lemma", row.get("Word", "")).lower()
@@ -63,9 +63,9 @@ def load_freq_nl() -> dict[str, int]:
 
 
 def load_freq_sr() -> dict[str, int]:
-    """Load Serbian Wikipedia 50k frequency list. Returns {word: rank}."""
+    """Load Serbian frequency list (srLex 1.3, lemma-aggregated). Returns {lemma: rank}."""
     freq = {}
-    with open(DATA_DIR / "sr.txt", encoding="utf-8") as f:
+    with open(DATA_DIR / "sr_freq.csv", encoding="utf-8") as f:
         for rank, line in enumerate(f, 1):
             parts = line.strip().split()
             if parts:
