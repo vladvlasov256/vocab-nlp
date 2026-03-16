@@ -37,7 +37,7 @@ LANG_PRESETS = {
     },
 }
 LANGUAGES = list(LANG_PRESETS.keys())
-LEVELS = list(LANG_PRESETS["nl"]["level_bands"].keys())
+LEVELS = ["A0", "A1", "A2", "B1"]
 
 _modal_data = Path("/root/data")
 DATA_DIR = _modal_data if _modal_data.exists() else Path(__file__).parent / "data"
