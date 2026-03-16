@@ -108,6 +108,11 @@ uv run --group bench python bench/run.py
 | A2 | 4.4 | 3.5 | +0.90 |
 | **Overall** | **4.4** | **3.0** | **+1.47** |
 
+### Known issues
+
+- **"vroeger" lemmatized as "vroeg"** — Stanza and Wiktionary both treat "vroeger" as the comparative of "vroeg" (early), but in most contexts it's a separate word meaning "formerly." No clean fix without word-sense disambiguation.
+- **Common verbs filtered at A2** — verbs like "veranderen" (rank 626) fall in the A2 known band and get filtered, but a judge considers them useful. Narrowing the known band reintroduces noise.
+
 ## Languages
 
 | Language | Code | Status | Frequency list |
