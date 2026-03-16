@@ -111,14 +111,14 @@ uv run --group bench python bench/run.py --lang sr
 | A2 | 4.4 | 3.5 | +0.90 |
 | **Overall** | **4.4** | **3.0** | **+1.47** |
 
-### Serbian — Cohen's d = 0.16
+### Serbian — Cohen's d = 0.30
 
 | Level | Pipeline avg | LLM avg | Delta |
 |-------|-------------|---------|-------|
-| A0 | 4.2 | 2.1 | +2.10 |
-| A1 | 3.6 | 3.7 | -0.10 |
+| A0 | 4.1 | 2.2 | +1.90 |
+| A1 | 3.9 | 3.2 | +0.70 |
 | A2 | 3.2 | 4.3 | -1.10 |
-| **Overall** | **3.7** | **3.4** | **+0.30** |
+| **Overall** | **3.7** | **3.2** | **+0.50** |
 
 ### Known issues
 
