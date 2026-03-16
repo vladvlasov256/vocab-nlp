@@ -246,6 +246,7 @@ def extract(doc, lang: str, freq: dict[str, int], level: str = "A0") -> dict:
     # Dropped: function words / structural tokens, not useful for learners
     _CANDIDATE_POS = {"NOUN", "VERB", "ADJ", "DET"}
     _DROPPED_POS = {
+        "ADV",    # adverbs (mnogo, često) — TODO: add as candidates
         "ADP",    # prepositions (u, na, za) — function words
         "AUX",    # auxiliary verbs (je, sam, će) — function words
         "CCONJ",  # coordinating conjunctions (i, ali, ili)
