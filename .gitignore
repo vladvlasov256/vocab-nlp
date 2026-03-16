@@ -3,5 +3,6 @@ __pycache__/
 *.pyc
 .modal/
 .env
+.claude/settings.local.json
 # Raw Wiktionary downloads (processed TSV is committed)
 *.jsonl.gz
