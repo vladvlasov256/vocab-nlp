@@ -335,7 +335,10 @@ def extract(doc, lang: str, freq: dict[str, int], level: str = "A0") -> dict:
         rank_key = item.pop("_rank_key", item["text"].lower())
         rank = freq.get(rank_key)
         item["rank"] = rank
-        item["weight"] = rank_to_weight(rank, lang, level)
+        weight = rank_to_weight(rank, lang, level)
+        if item["pos"] == "ADV":
+            weight *= 0.7
+        item["weight"] = weight
         band = LANG_PRESETS[lang]["level_bands"][level]
         item["in_target"] = rank is not None and band["known"] < rank <= band["target"]
 
