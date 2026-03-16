@@ -256,20 +256,35 @@ class VocabApp(App):
                 table.add_row(item["text"], item["pos"], f"[{weight_style}]{w:.2f}[/{weight_style}]", band)
             return table
 
-        # Proper nouns panel
+        # Build panels, skip empty ones
+        panels = []
+
+        if above:
+            panels.append(Panel(_make_table(above), title="Candidates", border_style="green"))
+        if below:
+            panels.append(Panel(_make_table(below), title="Filtered out", border_style="dim"))
+
         propn = result.get("proper_nouns", [])
-        propn_table = Table(show_lines=False, pad_edge=False, expand=True)
-        propn_table.add_column("Name", style="bold")
-        for item in propn:
-            propn_table.add_row(item["text"])
+        if propn:
+            propn_table = Table(show_lines=False, pad_edge=False, expand=True)
+            propn_table.add_column("Name", style="bold")
+            for item in propn:
+                propn_table.add_row(item["text"])
+            panels.append(Panel(propn_table, title="Proper nouns", border_style="cyan"))
 
-        panels = Columns([
-            Panel(_make_table(above), title="Candidates", border_style="green"),
-            Panel(_make_table(below), title="Filtered out", border_style="dim"),
-            Panel(propn_table, title="Proper nouns", border_style="cyan"),
-        ], equal=True)
+        nums = result.get("numbers", [])
+        if nums:
+            num_table = Table(show_lines=False, pad_edge=False, expand=True)
+            num_table.add_column("Number", style="bold")
+            for item in nums:
+                num_table.add_row(item["text"])
+            panels.append(Panel(num_table, title="Numbers", border_style="magenta"))
 
-        log.write(panels)
+        if not panels:
+            log.write("[dim]No results[/dim]")
+        else:
+            log.write(Columns(panels, equal=True))
+
         log.write("")
 
     def action_set_threshold(self) -> None:

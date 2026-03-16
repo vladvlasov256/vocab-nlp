@@ -236,6 +236,7 @@ def extract(doc, lang: str, freq: dict[str, int], level: str = "A0") -> dict:
     """
     candidates = []
     proper_nouns = []
+    numbers = []
     propn_stems = set()
 
     # --- Step 1: Collect tokens by POS ---
@@ -244,6 +245,8 @@ def extract(doc, lang: str, freq: dict[str, int], level: str = "A0") -> dict:
             if word.upos == "PROPN":
                 proper_nouns.append({"text": word.lemma, "pos": "PROPN"})
                 propn_stems.add(word.lemma.lower())
+            elif word.upos == "NUM":
+                numbers.append({"text": word.text, "pos": "NUM"})
             elif word.upos in ("NOUN", "VERB", "ADJ", "DET"):
                 candidates.append({"text": word.lemma, "pos": word.upos, "_surface": word.text})
 
@@ -280,6 +283,9 @@ def extract(doc, lang: str, freq: dict[str, int], level: str = "A0") -> dict:
     # Determiners (de, het, een) — too trivial for any level
     candidates = [item for item in candidates if item["pos"] != "DET"]
 
+    # Numeric tokens (e.g. "2026.", "26.", "1.") — not vocabulary
+    candidates = [item for item in candidates if not re.match(r"^\d+\.?$", item["text"])]
+
     # --- Step 5: Deduplicate ---
     seen = set()
     unique = []
@@ -310,4 +316,12 @@ def extract(doc, lang: str, freq: dict[str, int], level: str = "A0") -> dict:
             seen_propn.add(key)
             unique_propn.append(item)
 
-    return {"language": lang, "lemmas": unique, "proper_nouns": unique_propn}
+    # Deduplicate numbers
+    seen_num = set()
+    unique_num = []
+    for item in numbers:
+        if item["text"] not in seen_num:
+            seen_num.add(item["text"])
+            unique_num.append(item)
+
+    return {"language": lang, "lemmas": unique, "proper_nouns": unique_propn, "numbers": unique_num}
