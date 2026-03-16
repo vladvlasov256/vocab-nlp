@@ -127,9 +127,11 @@ uv run --group bench python bench/run.py --lang sr
 - **Common verbs filtered at A2** — verbs like "veranderen" (rank 626) fall in the A2 known band and get filtered, but a judge considers them useful. Narrowing the known band reintroduces noise.
 
 **Serbian:**
-- **Numeric tokens leaking** — "2026.", "26.", "1." pass POS filters and appear as candidates.
-- **Malformed lemmas** — Stanza produces artifacts like "dronova-kamikaza", "uNConferenca", "svetki" without lemma overrides to catch them.
-- **Known bands too aggressive at A1/A2** — srLex web corpus ranks common words higher than expected, filtering out words A1/A2 learners still need (pomoć, tehnologija, zemlja).
+- **Minor lemma typos** — Stanza occasionally produces slightly misspelled lemmas (e.g. "dizajan", "svetki"). These are rare and corrected by the downstream LLM during lesson generation.
+- **Ambiguous verb forms** — "uči" can lemmatize to "učiti" (learn) or "ući" (enter); Stanza picks based on context and sometimes gets it wrong.
+- **Compound proper nouns** — "Bliski istok" (Middle East) splits into separate words. Multi-word expression handling not yet implemented.
+
+> **Note:** The pipeline output is consumed by an LLM that generates lesson content. Minor lemma imperfections (typos, dialect forms) are corrected at that stage. The pipeline prioritizes picking the right words over perfect spelling.
 
 ## Languages
 

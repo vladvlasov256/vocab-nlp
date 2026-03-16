@@ -39,12 +39,12 @@ You are evaluating vocabulary lists extracted from a short {language} text for a
 ## List B
 {list_b}
 
-The learner is reading this text as part of a lesson. The goal is to help them understand and learn from it.
+The learner is reading this text as part of a lesson. The goal is to help them understand and learn from it. Minor spelling imperfections are acceptable if the word is recognizable.
 
 Score each list 1-5 on:
 - **Relevance**: Does the list help this {level} learner understand this specific text?
 - **Coverage**: Does the list capture the important vocabulary from the text?
-- **Noise**: Are there false picks — trivial words, proper nouns, misspellings, or malformed entries?
+- **Noise**: Are there false picks — trivial words, proper nouns, or unrecognizable words?
 
 Accept dialect variants as correct. Accept standard lemmatization even when the lemma form differs from the surface form in the text.
 
