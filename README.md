@@ -136,7 +136,7 @@ uv run --group bench python bench/run.py --lang sr
 | Language | Code | Status | Frequency list | Lemma overrides |
 |----------|------|--------|---------------|-----------------|
 | Dutch | `nl` | Active | SUBTLEX-NL (400k lemmas) | Wiktionary via kaikki.org (370k) |
-| Serbian | `sr` | Active | srLex 1.3 (105k lemmas) | srLex 1.3 (1.7M) |
+| Serbian | `sr` | Active | srLex 1.3 (105k lemmas) | srLex 1.3 + kaikki.org (2.1M) |
 | German | `de` | Planned | — | — |
 | Turkish | `tr` | Planned | — | — |
 | Greek | `el` | Planned | — | — |
