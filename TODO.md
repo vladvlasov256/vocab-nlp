@@ -12,17 +12,17 @@ Every UPOS tag must be handled explicitly — never silently ignore.
 
 ### Noise (biggest impact on A1/A2 scores)
 
-- [ ] **Proper noun leakage** — Stanza mis-tags proper nouns as NOUN/ADJ: "zelenski", "iPhona", "pokemon", "delhija", "uNConferenca". Cross-check against PROPN stems or capitalized surface forms.
+- [x] **Proper noun leakage** — Filter: capitalized mid-sentence + not in freq list → probable name. Gated by `filter_propn_by_surface` preset flag.
 - [ ] **Malformed lemmas** — Stanza artifacts: "dronova-kamikaza", "dronova-kamikaz", "svetki", "dizajan", "vana" (should be "vani"), "lepak". Add to sr_lemmas.tsv or add heuristic filters.
 - [ ] **Dialect normalization** — srLex uses ijekavian forms ("voliti") but standard Serbian is ekavian ("voleti"). May need a mapping layer.
 - [ ] **Ambiguous verb forms** — "uči" can be "učiti" (learn) or "ući" (enter); Stanza sometimes picks wrong verb from context. Not fixable with overrides.
 - [ ] **čovek vs ljudi** — "čovek" appears as candidate when text uses "ljudi". Stanza lemmatizes "ljudi" to "čovek" which is technically correct but confusing for learners.
 - [ ] **Compound proper nouns** — "Bliski istok" (Middle East) splits into "blizak" + "istok". Need multi-word expression handling or a proper noun blocklist.
 
-### Coverage (A2 loses to LLM baseline at -1.10)
+### Coverage
 
-- [ ] **A2 known band too aggressive** — Known=1000 filters core words: pomoć, tehnologija, novac, zemlja, problem, želeti, razumeti, saradnja. Lower to ~500.
-- [ ] **Re-tune all bands after noise fixes** — Noise fixes alone should lift scores; re-benchmark before further band changes.
+- [x] **A2 known band lowered** — Known 1000→500. Pipeline now wins A2 (+0.30).
+- [ ] **Re-tune all bands after remaining noise fixes** — Further band changes may help once malformed lemmas and dialect issues are addressed.
 
 ## Dutch
 
@@ -31,7 +31,7 @@ Every UPOS tag must be handled explicitly — never silently ignore.
 ## Done
 
 - [x] Wiktionary-based lemma overrides (370k entries) — fixes coaches→coach, atleten→atleet, telescopen→telescoop
-- [x] Serbian lemma overrides from srLex 1.3 (1.7M entries)
+- [x] Serbian lemma overrides from srLex 1.3 + kaikki.org (2.1M entries)
 - [x] Serbian frequency list from srLex 1.3 (105k lemmas, replaces Wikipedia 50k)
 - [x] Per-language presets (LANG_PRESETS) with custom CEFR bands
 - [x] Numeric token filter (regex `^\d+\.?$`)
