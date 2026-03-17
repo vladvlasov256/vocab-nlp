@@ -35,6 +35,17 @@ LANG_PRESETS = {
             "B1": {"band": {"known": 2000,  "target": 8000},  "adv_weight": 1.0},
         },
     },
+    "en": {
+        "name": "English",
+        "filter_propn_by_surface": True,
+        "separable_verbs": False,
+        "levels": {
+            "A0": {"band": {"known": 0,     "target": 1000},  "adv_weight": 0.7},
+            "A1": {"band": {"known": 500,   "target": 3000},  "adv_weight": 0.7},
+            "A2": {"band": {"known": 1500,  "target": 5000},  "adv_weight": 1.0},
+            "B1": {"band": {"known": 3000,  "target": 8000},  "adv_weight": 1.0},
+        },
+    },
 }
 LANGUAGES = list(LANG_PRESETS.keys())
 LEVELS = ["A0", "A1", "A2", "B1"]
@@ -77,7 +88,23 @@ def load_freq_sr() -> dict[str, int]:
     return freq
 
 
-FREQ_LOADERS = {"nl": load_freq_nl, "sr": load_freq_sr}
+def load_freq_en() -> dict[str, int]:
+    """Load SUBTLEX-US frequency list. Returns {word: rank}.
+
+    SUBTLEX-US is a subtitle-based corpus (~74k word forms). Lower rank = more common.
+    Word-form based (not lemma), but English has minimal inflection so this works well.
+    """
+    freq = {}
+    with open(DATA_DIR / "en_freq.csv", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for rank, row in enumerate(reader, 1):
+            word = row["Word"].lower()
+            if word and word not in freq:
+                freq[word] = rank
+    return freq
+
+
+FREQ_LOADERS = {"nl": load_freq_nl, "sr": load_freq_sr, "en": load_freq_en}
 
 
 def load_lemma_overrides(lang: str) -> dict[tuple[str, str], str]:

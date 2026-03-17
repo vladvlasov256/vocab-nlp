@@ -20,7 +20,7 @@ image = modal.Image.debian_slim(python_version="3.13").pip_install(
     "fastapi[standard]",
     "stanza",
 ).run_commands(
-    "python -c \"import stanza; stanza.download('nl', processors='tokenize,pos,lemma,depparse'); stanza.download('sr', processors='tokenize,pos,lemma,depparse')\"",
+    "python -c \"import stanza; stanza.download('nl', processors='tokenize,pos,lemma,depparse'); stanza.download('sr', processors='tokenize,pos,lemma,depparse'); stanza.download('en', processors='tokenize,pos,lemma,depparse')\"",
 ).add_local_dir(str(DATA_DIR), remote_path="/root/data"
 ).add_local_python_source("pipeline")
 

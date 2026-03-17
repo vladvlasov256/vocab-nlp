@@ -100,6 +100,7 @@ Displays three panels: **Candidates** (above threshold), **Filtered out** (below
 ```bash
 uv run --group bench python bench/run.py --lang nl
 uv run --group bench python bench/run.py --lang sr
+uv run --group bench python bench/run.py --lang en
 ```
 
 ### Dutch — Cohen's d = 1.97
@@ -139,6 +140,7 @@ uv run --group bench python bench/run.py --lang sr
 |----------|------|--------|---------------|-----------------|
 | Dutch | `nl` | Active | SUBTLEX-NL (400k lemmas) | Wiktionary via kaikki.org (370k) |
 | Serbian | `sr` | Active | srLex 1.3 (105k lemmas) | srLex 1.3 + kaikki.org (2.1M) |
+| English | `en` | Active | SUBTLEX-US (74k words) | — |
 | German | `de` | Planned | — | — |
 | Turkish | `tr` | Planned | — | — |
 | Greek | `el` | Planned | — | — |
