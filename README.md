@@ -121,14 +121,14 @@ uv run --group bench python bench/run.py --lang en
 | A2 | 4.4 | 4.0 | +0.40 |
 | **Overall** | **4.6** | **3.2** | **+1.43** |
 
-### English — Cohen's d = 0.53
+### English — Cohen's d = 1.25
 
 | Level | Pipeline avg | LLM avg | Delta |
 |-------|-------------|---------|-------|
-| A0 | 5.0 | 2.6 | +2.40 |
-| A1 | 4.3 | 3.5 | +0.80 |
-| A2 | 3.8 | 4.2 | -0.40 |
-| **Overall** | **4.4** | **3.4** | **+0.93** |
+| A0 | 4.9 | 2.3 | +2.60 |
+| A1 | 4.4 | 3.0 | +1.40 |
+| A2 | 4.3 | 3.7 | +0.60 |
+| **Overall** | **4.5** | **3.0** | **+1.53** |
 
 ### Known issues
 
@@ -137,9 +137,9 @@ uv run --group bench python bench/run.py --lang en
 - **Common verbs filtered at A2** — verbs like "veranderen" (rank 626) fall in the A2 known band and get filtered, but a judge considers them useful. Narrowing the known band reintroduces noise.
 
 **English:**
-- **A2 coverage collapse** — SUBTLEX-US is word-form based (74k entries), not lemma-based, so ranks are spread thinner than Dutch/Serbian lemma lists. Common verbs like "play", "feel", "help" land in the A2 known band (top 1500) and get filtered, but a judge considers them useful at A2. The pipeline loses to the LLM baseline at A2 (3.8 vs 4.2). Widening the bands or switching to a lemma-aggregated list would help.
-- **Compound word splitting** — hyphenated compounds like "self-esteem" and "cross-border" get split into parts, losing the original meaning.
+- **Compound word splitting** — hyphenated compounds like "self-esteem" and "cross-border" get split into parts, losing the original meaning. Caused both A2 losses (en_a2_03, en_a2_10).
 - **Proper noun leakage** — occasional proper nouns slip through as candidates (e.g. "cab" from company name, "genscript").
+- **Single-letter noise** — "P" and "p" leak through from abbreviations (en_a1_01, en_a1_03).
 
 **Serbian:**
 - **Minor lemma typos** — Stanza occasionally produces slightly misspelled lemmas (e.g. "dizajan", "svetki"). These are rare and corrected by the downstream LLM during lesson generation.
