@@ -41,9 +41,9 @@ LANG_PRESETS = {
         "separable_verbs": False,
         "levels": {
             "A0": {"band": {"known": 0,     "target": 1000},  "adv_weight": 0.7},
-            "A1": {"band": {"known": 500,   "target": 3000},  "adv_weight": 0.7},
-            "A2": {"band": {"known": 1500,  "target": 5000},  "adv_weight": 1.0},
-            "B1": {"band": {"known": 3000,  "target": 8000},  "adv_weight": 1.0},
+            "A1": {"band": {"known": 300,   "target": 3000},  "adv_weight": 0.7},
+            "A2": {"band": {"known": 800,   "target": 5000},  "adv_weight": 1.0},
+            "B1": {"band": {"known": 1500,  "target": 8000},  "adv_weight": 1.0},
         },
     },
 }
