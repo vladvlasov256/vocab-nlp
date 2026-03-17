@@ -25,6 +25,11 @@ Every UPOS tag must be handled explicitly — never silently ignore.
 - [x] **A2 known band lowered** — Known 1000→500. Pipeline now wins A2 (+0.30).
 - [ ] **Re-tune all bands after remaining noise fixes** — Further band changes may help once malformed lemmas and dialect issues are addressed.
 
+## English
+
+- [ ] **Hyphenated compound splitting** — "self-esteem" → "self" + "esteem", "cross-border" → "cross" + "border". Stanza splits on hyphens and the parts lose meaning. Caused both A2 benchmark losses (en_a2_03, en_a2_10).
+- [ ] **Single-letter token noise** — "p" / "P" leaking through from abbreviations or currency symbols (en_a1_01, en_a1_03). Add a minimum token length filter (≥2 chars).
+
 ## Dutch
 
 - [ ] **"vroeger" lemmatized as "vroeg"** — both Stanza and Wiktionary treat it as comparative of "vroeg", but it's a separate lexical item meaning "formerly". No clean fix yet.
