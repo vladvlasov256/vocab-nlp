@@ -125,14 +125,14 @@ uv run --group bench python bench/run.py --lang en
 | A2 | 4.4 | 4.0 | +0.40 |
 | **Overall** | **4.6** | **3.2** | **+1.43** |
 
-### English — Cohen's d = 1.25
+### English — Cohen's d = 1.47
 
 | Level | Pipeline avg | LLM avg | Delta |
 |-------|-------------|---------|-------|
-| A0 | 4.9 | 2.3 | +2.60 |
+| A0 | 5.0 | 2.5 | +2.50 |
 | A1 | 4.4 | 3.0 | +1.40 |
-| A2 | 4.3 | 3.7 | +0.60 |
-| **Overall** | **4.5** | **3.0** | **+1.53** |
+| A2 | 4.5 | 3.8 | +0.70 |
+| **Overall** | **4.6** | **3.1** | **+1.53** |
 
 ### Known issues
 
