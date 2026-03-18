@@ -16,3 +16,6 @@ bench = [
     "openai>=2.28.0",
     "python-dotenv>=1.2.2",
 ]
+space = [
+    "gradio>=6.9.0",
+]

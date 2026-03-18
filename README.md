@@ -1,3 +1,8 @@
+---
+app_file: gradio_app.py
+sdk: gradio
+---
+
 # vocab-nlp
 
 Multilingual NLP microservice that extracts vocabulary candidates from short texts. Built for language learning apps targeting A0-B1 learners.
