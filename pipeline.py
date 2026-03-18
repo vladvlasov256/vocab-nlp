@@ -289,7 +289,45 @@ def extract(doc, lang: str, freq: dict[str, int], level: str = "A0") -> dict:
         "X",      # foreign/other
     }
     for sent in doc.sentences:
+        # Build lookup for merge logic
+        words_by_id = {w.id: w for w in sent.words}
+
+        # Identify tokens to skip (merged into a neighbor)
+        _skip = set()
+
+        # Merge single-char compound fragments with their head.
+        # Stanza splits "XA90P" → "XA90"(compound→Token) + "P"(compound→Token)
+        # and "95p" → "95"(nummod→p) + "p". Rejoin these before collection.
         for word in sent.words:
+            if len(word.text) == 1 and word.deprel == "compound" and word.head > 0:
+                head = words_by_id.get(word.head)
+                if head:
+                    # Find all compound fragments pointing at the same head
+                    parts = sorted(
+                        [w for w in sent.words if w.head == head.id and w.deprel == "compound"]
+                        + [head],
+                        key=lambda w: w.id,
+                    )
+                    merged = "".join(w.text for w in parts)
+                    head.text = merged
+                    head.lemma = merged
+                    for w in parts:
+                        if w.id != head.id:
+                            _skip.add(w.id)
+
+            # "95p" pattern: single-char NOUN with a NUM child via nummod → skip it
+            # The NUM already goes to the numbers list; the suffix is not vocabulary.
+            if len(word.text) == 1 and word.upos == "NOUN":
+                num_child = next(
+                    (w for w in sent.words if w.head == word.id and w.deprel == "nummod" and w.upos == "NUM"),
+                    None,
+                )
+                if num_child:
+                    _skip.add(word.id)
+
+        for word in sent.words:
+            if word.id in _skip:
+                continue
             if word.upos == "PROPN":
                 proper_nouns.append({"text": word.lemma, "pos": "PROPN"})
                 propn_stems.add(word.lemma.lower())

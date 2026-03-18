@@ -30,6 +30,8 @@ Collect NOUN, VERB, ADJ, ADV tokens, then apply heuristics. NUM and PROPN go to 
 
 **Compound rejoining** — Stanza sometimes lemmatizes Dutch compounds with underscores: "doorzettingsvermogen" → "doorzetting_vermogen". We try rejoining the parts with common Dutch connectors (direct, -s-, -e-, -en-, -er-) and validate against the frequency list. If "doorzettingsvermogen" exists in SUBTLEX-NL, use it. Otherwise fall through as-is.
 
+**Tokenizer fragment merging** — Stanza's tokenizer splits at digit-letter boundaries: "XA90P" → "XA90" + "P", "95p" → "95" + "p". Single-character fragments with `deprel=compound` are merged back into their head token. Single-character NOUNs with a NUM child (unit suffixes like "p" in "95p") are dropped — the number is already captured separately.
+
 **Demonym filtering** — Uppercase adjectives like "Israëlisch", "Palestijns" are filtered out. These are derived from proper nouns and aren't useful vocabulary items.
 
 **Proper noun separation** — PROPN tokens go to a separate list, not mixed with vocabulary candidates. Additionally, Stanza sometimes mis-tags proper nouns as NOUN/ADJ. We catch these by checking if the surface form is capitalized mid-sentence and the lemma is absent from the frequency list — if both are true, the word is almost certainly a name (e.g. "zelenski", "iPhona") and gets filtered.
@@ -139,7 +141,7 @@ uv run --group bench python bench/run.py --lang en
 **English:**
 - **Compound word splitting** — hyphenated compounds like "self-esteem" and "cross-border" get split into parts, losing the original meaning. Caused both A2 losses (en_a2_03, en_a2_10).
 - **Proper noun leakage** — occasional proper nouns slip through as candidates (e.g. "cab" from company name, "genscript").
-- **Single-letter noise** — "P" and "p" leak through from abbreviations (en_a1_01, en_a1_03).
+- **~~Single-letter noise~~** — Fixed. Tokenizer fragments ("P" from "XA90P", "p" from "95p") are now merged back or dropped via dependency parse.
 
 **Serbian:**
 - **Minor lemma typos** — Stanza occasionally produces slightly misspelled lemmas (e.g. "dizajan", "svetki"). These are rare and corrected by the downstream LLM during lesson generation.

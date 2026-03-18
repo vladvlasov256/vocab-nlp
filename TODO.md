@@ -28,7 +28,7 @@ Every UPOS tag must be handled explicitly — never silently ignore.
 ## English
 
 - [ ] **Hyphenated compound splitting** — "self-esteem" → "self" + "esteem", "cross-border" → "cross" + "border". Stanza splits on hyphens and the parts lose meaning. Caused both A2 benchmark losses (en_a2_03, en_a2_10).
-- [ ] **Single-letter token noise** — "p" / "P" leaking through from abbreviations or currency symbols (en_a1_01, en_a1_03). Add a minimum token length filter (≥2 chars).
+- [x] **Single-letter token noise** — Fixed via dependency parse: compound fragments merged into head, NUM unit suffixes dropped.
 
 ## Dutch
 
