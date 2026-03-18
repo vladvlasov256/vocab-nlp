@@ -107,14 +107,14 @@ uv run --group bench python bench/run.py --lang sr
 uv run --group bench python bench/run.py --lang en
 ```
 
-### Dutch — Cohen's d = 1.97
+### Dutch — Cohen's d = 1.29
 
 | Level | Pipeline avg | LLM avg | Delta |
 |-------|-------------|---------|-------|
-| A0 | 4.8 | 2.4 | +2.40 |
-| A1 | 4.6 | 3.1 | +1.50 |
-| A2 | 4.4 | 3.3 | +1.10 |
-| **Overall** | **4.6** | **2.9** | **+1.67** |
+| A0 | 4.8 | 2.3 | +2.50 |
+| A1 | 4.5 | 3.0 | +1.50 |
+| A2 | 4.3 | 3.8 | +0.50 |
+| **Overall** | **4.5** | **3.0** | **+1.50** |
 
 ### Serbian — Cohen's d = 1.30
 
