@@ -269,7 +269,19 @@ def extract(doc, lang: str, freq: dict[str, int], level: str = "A0") -> dict:
     proper_nouns = []
     numbers = []
     merged_fragments = []
+
+    # Pre-pass: collect all proper noun surface forms so we can skip mis-tagged
+    # instances during collection. Stanza sometimes tags a proper noun as NOUN
+    # (e.g. sentence-initial "CAB"), so we need to know PROPN surfaces upfront.
+    # We track exact surface forms (not lowercased) to avoid filtering legitimate
+    # common nouns that happen to share a lemma (e.g. "payments" vs "Payments").
+    propn_surfaces = set()
     propn_stems = set()
+    for sent in doc.sentences:
+        for word in sent.words:
+            if word.upos == "PROPN":
+                propn_surfaces.add(word.text)
+                propn_stems.add(word.lemma.lower())
 
     # --- Step 1: Collect tokens by POS ---
     # Every UPOS must be handled explicitly — never silently ignore a tag.
@@ -363,10 +375,14 @@ def extract(doc, lang: str, freq: dict[str, int], level: str = "A0") -> dict:
                 continue
             if word.upos == "PROPN":
                 proper_nouns.append({"text": word.lemma, "pos": "PROPN"})
-                propn_stems.add(word.lemma.lower())
             elif word.upos == "NUM":
                 numbers.append({"text": word.text, "pos": "NUM"})
             elif word.upos in _CANDIDATE_POS:
+                # Skip words whose surface form matches a known proper noun
+                # (e.g. "CAB" mis-tagged as NOUN). Uses exact surface match so
+                # lowercase "payments" (legitimate) isn't blocked by "Payments" (PROPN).
+                if word.text in propn_surfaces:
+                    continue
                 candidates.append({"text": word.lemma, "pos": word.upos, "_surface": word.text, "_sent_initial": word.id == 1})
             elif word.upos not in _DROPPED_POS:
                 logging.getLogger("pipeline").warning(f"Unhandled POS: {word.upos} for '{word.text}'")

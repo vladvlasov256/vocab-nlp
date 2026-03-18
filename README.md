@@ -36,7 +36,7 @@ Collect NOUN, VERB, ADJ, ADV tokens, then apply heuristics. NUM and PROPN go to 
 
 **Demonym filtering** — Uppercase adjectives like "Israëlisch", "Palestijns" are filtered out. These are derived from proper nouns and aren't useful vocabulary items.
 
-**Proper noun separation** — PROPN tokens go to a separate list, not mixed with vocabulary candidates. Additionally, Stanza sometimes mis-tags proper nouns as NOUN/ADJ. We catch these by checking if the surface form is capitalized mid-sentence and the lemma is absent from the frequency list — if both are true, the word is almost certainly a name (e.g. "zelenski", "iPhona") and gets filtered.
+**Proper noun separation** — PROPN tokens go to a separate list, not mixed with vocabulary candidates. A pre-pass collects all PROPN lemmas upfront; any candidate whose lemma matches a known proper noun is skipped at collection time (catches mis-tagged instances like sentence-initial "CAB" → NOUN). Additionally, Stanza sometimes mis-tags proper nouns as NOUN/ADJ mid-sentence — we catch these by checking if the surface form is capitalized and the lemma is absent from the frequency list (e.g. "zelenski", "iPhona").
 
 **CEFR frequency ranking** — Each lemma is scored by its rank in a corpus frequency list (SUBTLEX-NL for Dutch, srLex 1.3 for Serbian). Scoring is level-aware:
 
@@ -126,23 +126,20 @@ uv run --group bench python bench/run.py --text en_a2_03 -v  # single text, prin
 | A2 | 4.4 | 4.0 | +0.40 |
 | **Overall** | **4.6** | **3.2** | **+1.43** |
 
-### English — Cohen's d = 1.47
+### English — Cohen's d = 1.51
 
 | Level | Pipeline avg | LLM avg | Delta |
 |-------|-------------|---------|-------|
-| A0 | 5.0 | 2.5 | +2.50 |
+| A0 | 4.9 | 2.7 | +2.20 |
 | A1 | 4.4 | 3.0 | +1.40 |
-| A2 | 4.5 | 3.8 | +0.70 |
-| **Overall** | **4.6** | **3.1** | **+1.53** |
+| A2 | 4.6 | 3.8 | +0.80 |
+| **Overall** | **4.6** | **3.2** | **+1.47** |
 
 ### Known issues
 
 **Dutch:**
 - **"vroeger" lemmatized as "vroeg"** — Stanza and Wiktionary both treat "vroeger" as the comparative of "vroeg" (early), but in most contexts it's a separate word meaning "formerly." No clean fix without word-sense disambiguation.
 - **Common verbs filtered at A2** — verbs like "veranderen" (rank 626) fall in the A2 known band and get filtered, but a judge considers them useful. Narrowing the known band reintroduces noise.
-
-**English:**
-- **Proper noun leakage** — occasional proper nouns slip through as candidates (e.g. "cab" from company name, "genscript").
 
 **Serbian:**
 - **Minor lemma typos** — Stanza occasionally produces slightly misspelled lemmas (e.g. "dizajan", "svetki"). These are rare and corrected by the downstream LLM during lesson generation.
