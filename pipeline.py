@@ -268,6 +268,7 @@ def extract(doc, lang: str, freq: dict[str, int], level: str = "A0") -> dict:
     candidates = []
     proper_nouns = []
     numbers = []
+    merged_fragments = []
     propn_stems = set()
 
     # --- Step 1: Collect tokens by POS ---
@@ -308,7 +309,13 @@ def extract(doc, lang: str, freq: dict[str, int], level: str = "A0") -> dict:
                         + [head],
                         key=lambda w: w.id,
                     )
-                    merged = "".join(w.text for w in parts)
+                    original_parts = [w.text for w in parts]
+                    merged = "".join(original_parts)
+                    merged_fragments.append({
+                        "parts": original_parts,
+                        "merged": merged,
+                        "rule": "compound",
+                    })
                     head.text = merged
                     head.lemma = merged
                     for w in parts:
@@ -323,6 +330,11 @@ def extract(doc, lang: str, freq: dict[str, int], level: str = "A0") -> dict:
                     None,
                 )
                 if num_child:
+                    merged_fragments.append({
+                        "parts": [num_child.text, word.text],
+                        "merged": f"({num_child.text}{word.text} → dropped suffix)",
+                        "rule": "num_suffix",
+                    })
                     _skip.add(word.id)
 
         for word in sent.words:
@@ -427,4 +439,4 @@ def extract(doc, lang: str, freq: dict[str, int], level: str = "A0") -> dict:
             seen_num.add(item["text"])
             unique_num.append(item)
 
-    return {"language": lang, "lemmas": unique, "proper_nouns": unique_propn, "numbers": unique_num}
+    return {"language": lang, "lemmas": unique, "proper_nouns": unique_propn, "numbers": unique_num, "merged_fragments": merged_fragments}

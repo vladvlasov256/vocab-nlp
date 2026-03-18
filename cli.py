@@ -280,6 +280,20 @@ class VocabApp(App):
                 num_table.add_row(item["text"])
             panels.append(Panel(num_table, title="Numbers", border_style="magenta"))
 
+        merged = result.get("merged_fragments", [])
+        if merged:
+            merge_table = Table(show_lines=False, pad_edge=False, expand=True)
+            merge_table.add_column("Parts", style="bold")
+            merge_table.add_column("Result", style="green")
+            merge_table.add_column("Rule", style="dim")
+            for item in merged:
+                merge_table.add_row(
+                    " + ".join(item["parts"]),
+                    item["merged"],
+                    item["rule"],
+                )
+            panels.append(Panel(merge_table, title="Merged fragments", border_style="yellow"))
+
         if not panels:
             log.write("[dim]No results[/dim]")
         else:
