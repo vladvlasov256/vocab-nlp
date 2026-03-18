@@ -1,6 +1,5 @@
 """Gradio UI for Hugging Face Spaces — wraps the same pipeline as Modal and CLI."""
 
-import json
 import logging
 import os
 import warnings
@@ -23,7 +22,6 @@ from pipeline import (
 
 logging.getLogger("stanza").setLevel(logging.WARNING)
 
-# Pre-load all pipelines and frequency lists at startup
 _pipelines = {}
 _freqs = {}
 for lang in LANGUAGES:
@@ -31,30 +29,46 @@ for lang in LANGUAGES:
     _freqs[lang] = FREQ_LOADERS[lang]()
 
 
-def analyze(text: str, lang: str, level: str) -> str:
+def analyze(text: str, lang: str, level: str):
     if not text.strip():
-        return json.dumps({"error": "'text' is required"}, indent=2)
+        return [], [], []
 
     text = trim_text(text)
     doc = _pipelines[lang](text)
     result = extract(doc, lang, _freqs[lang], level=level)
     result["lemmas"] = [l for l in result["lemmas"] if l["weight"] > 0.5][:MAX_LEMMAS]
-    return json.dumps(result, indent=2, ensure_ascii=False)
+
+    candidates = [
+        [item["text"], item["pos"], item.get("rank") or "—", "target" if item["in_target"] else "beyond"]
+        for item in result["lemmas"]
+    ]
+    propn = [[item["text"]] for item in result.get("proper_nouns", [])]
+    nums = [[item["text"]] for item in result.get("numbers", [])]
+
+    return candidates, propn, nums
 
 
-lang_names = {code: LANG_PRESETS[code]["name"] for code in LANGUAGES}
+with gr.Blocks(title="vocab-nlp") as demo:
+    gr.Markdown("# vocab-nlp\nExtract vocabulary candidates from short texts for language learners (A0–B1).")
 
-demo = gr.Interface(
-    fn=analyze,
-    inputs=[
-        gr.Textbox(label="Text", lines=4, placeholder="Enter text to analyze..."),
-        gr.Dropdown(choices=LANGUAGES, value="nl", label="Language"),
-        gr.Dropdown(choices=LEVELS, value="A0", label="CEFR Level"),
-    ],
-    outputs=gr.JSON(label="Extracted vocabulary"),
-    title="vocab-nlp",
-    description="Extract vocabulary candidates from short texts for language learners (A0–B1).",
-)
+    with gr.Row():
+        with gr.Column():
+            text_input = gr.Textbox(label="Text", lines=4, placeholder="Enter text to analyze...")
+            lang_input = gr.Dropdown(choices=LANGUAGES, value="nl", label="Language")
+            level_input = gr.Dropdown(choices=LEVELS, value="A0", label="CEFR Level")
+            btn = gr.Button("Submit", variant="primary")
+
+        with gr.Column():
+            candidates_out = gr.Dataframe(
+                headers=["Lemma", "POS", "Rank", "Band"],
+                label="Candidates",
+            )
+            with gr.Row():
+                propn_out = gr.Dataframe(headers=["Name"], label="Proper Nouns")
+                nums_out = gr.Dataframe(headers=["Number"], label="Numbers")
+
+    btn.click(analyze, inputs=[text_input, lang_input, level_input], outputs=[candidates_out, propn_out, nums_out])
+    text_input.submit(analyze, inputs=[text_input, lang_input, level_input], outputs=[candidates_out, propn_out, nums_out])
 
 if __name__ == "__main__":
     demo.launch()
