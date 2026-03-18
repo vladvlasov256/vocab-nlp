@@ -1,5 +1,8 @@
 # PRD: Vocabulary Extraction Pipeline (v4)
 
+> **Status:** Implemented and benchmarked. Cohen's d = 1.75 vs pure LLM extraction.
+> **Next:** Phrase extraction layer — see [PRD-phrases.md](PRD-phrases.md).
+
 ## Motivation
 
 Vocabulary extraction has gone through three iterations, each trying to fix the previous one's shortcomings:
@@ -24,21 +27,22 @@ Build a lightweight NLP microservice that extracts candidate lexemes (single wor
 
 ## Target Languages
 
-**Now (v4 scope):**
+**Active:**
 
-| Language | Code | Key Challenges |
-|----------|------|----------------|
-| Dutch    | `nl` | Separable verbs (`opbellen` → `bel...op`), compound nouns (`slaapzak`) |
-| Serbian  | `sr` | Cyrillic/Latin script, noun compounds |
+| Language | Code | Key Challenges | Status |
+|----------|------|----------------|--------|
+| Dutch    | `nl` | Separable verbs (`op\|bellen`), compound nouns | ✅ Production |
+| Serbian  | `sr` | Cyrillic/Latin script, noun compounds | ✅ Production |
+| English  | `en` | Demo/benchmark language | ✅ Production |
 
-**Planned (design for, don't implement yet):**
+**Planned:**
 
 | Language | Code | Key Challenges |
 |----------|------|----------------|
 | Turkish  | `tr` | Agglutinative morphology, compound verbs |
 | Greek    | `el` | Compound nouns, NER for proper nouns |
 
-The microservice loads all active language models at init time into a single container (captured by Modal memory snapshot). Adding a language = adding one `stanza.Pipeline(lang)` call to init + language-specific extraction rules. No architectural changes needed.
+The microservice loads all active language models at init time into separate Modal classes (one per language), each captured by Modal memory snapshot. Adding a language = adding one class with `stanza.Pipeline(lang)` + language-specific extraction rules.
 
 ## Architecture
 
@@ -51,57 +55,45 @@ The microservice handles Steps 0-2 and returns ranked candidates. Bot-side integ
 
 ### Step 0: Text Trimming ✅
 
-The service must aggressively trim input text before NLP processing to minimize latency and noise:
-
 - Strip HTML tags, markdown formatting, URLs, email addresses
-- Remove source attribution lines, bylines, image captions
 - Collapse repeated whitespace and blank lines
-- Truncate to a maximum of 10 sentences (drop the rest — vocab from a 150-word A2 text doesn't need more)
-- Reject texts under 2 sentences (not enough context for meaningful extraction)
-
-Stanza processing time is linear in text length. Every unnecessary token costs ~1ms. For a 10-sentence A2 text this is marginal, but the service should never waste cycles on boilerplate that the news adapter or LLM left in.
+- Cap at `MAX_TEXT_BYTES` (4096)
 
 ### Step 1: Linguistic Preprocessing (Stanza) ✅
 
-- Load language-specific Stanza pipeline: `tokenize, pos, lemma, depparse, ner`
-- Extract: tokens, POS tags, lemmas, dependency relations, named entities, noun chunks
-- Stanza chosen over spaCy for higher accuracy on low-resource languages (Serbian, Turkish) — 2-5% better on UD benchmarks
+- Load language-specific Stanza pipeline: `tokenize, pos, lemma, depparse`
+- Extract: tokens, POS tags, lemmas, dependency relations
+- Wiktionary-based lemma overrides patched into Stanza's composite dict
 - CPU-only (`use_gpu=False`), sufficient for short texts (<1s per 10 sentences)
 
-**Output:** Structured token list with POS, lemma, dependency, and NER annotations.
-
-### Step 2: Phrase Extraction & Ranking
-
-Two sub-steps:
+### Step 2: Candidate Extraction & Ranking ✅
 
 #### 2a. Candidate Extraction
 
-- 🔴 **YAKE** (Yet Another Keyword Extractor) for language-agnostic keyphrase extraction (unigrams through trigrams, top 20-30)
-- ✅ **Noun chunks** from Stanza dependency parse
-- **Language-specific rules:**
-  - ✅ Dutch: group particles (`advmod`) with verbs to reconstruct separable verbs
-  - 🔴 Dutch: compound splitter for long nouns
-  - ⏳ Turkish: morpheme-aware splitting for compounds (planned language)
-  - ⏳ Serbian/Greek: NER + noun compound patterns (planned language)
+- ✅ **POS filtering:** NOUN, VERB, ADJ, ADV collected as candidates; DET, PRON, AUX, CCONJ, SCONJ, PART, INTJ, PUNCT, SYM, X dropped
+- ✅ **Separable verb reconstruction:** Dutch `compound:prt` dependency → `op|bellen` format (Duolingo convention). Base verb deduplicated when reconstructed.
+- ✅ **Compound lemma rejoining:** Stanza underscore splits (`doorzetting_vermogen`) rejoined with Dutch connectors, validated against frequency list
+- ✅ **Surface form fallback:** When Stanza's lemma isn't in freq list but surface form is, use surface form
+- ✅ **Proper noun filtering:** PROPN → separate list; mis-tagged proper nouns caught by capitalization + freq list check
+- ✅ **Merge logic:** Hyphenated compounds, single-char fragments, num+suffix patterns
+- ✅ **Number extraction:** NUM tokens → separate list
+- 🔴 **Phrase extraction:** See [PRD-phrases.md](PRD-phrases.md)
 
-PhraseMachine is **not used** — it is English-only and does not handle the target languages.
+#### 2b. Ranking ✅
 
-#### 2b. Ranking
+- ✅ **CEFR band scoring:** known (0.3), target (1.0), beyond (0.6) based on frequency rank relative to learner level
+- ✅ **Per-level band cutoffs:** A0/A1/A2/B1 with language-specific known/target thresholds
+- ✅ **ADV weight:** Reduced at lower levels (0.7 for A0/A1) to deprioritize adverbs
+- ✅ **Threshold filter:** weight > 0.5 removes known-band words
+- ✅ **Limit:** Top 15 candidates (`MAX_LEMMAS`)
 
-- ✅ **Exact match** against CEFR A2 frequency lists → score 1.0
-- 🔴 **Partial match** for multiword phrases: percentage of component words found in A2 list
-- ✅ **Frequency proxy** fallback: corpus frequency rank (top-1000 = A1-A2, 1000-2000 = A2-B1)
-- ✅ Filter: threshold > 0.5, limit to top 15 items
-- 🔴 Band cutoffs tuning (blocked on benchmark)
+**Frequency lists:**
 
-**CEFR frequency lists per language:**
-
-| Language | Source |
-|----------|--------|
-| Dutch    | NT2Lex (17k graded items, includes MWEs) |
-| Turkish  | TOMER CEFR frequency lists |
-| Serbian  | Wikipedia frequency + CEFR adaptation (top-2000) |
-| Greek    | Wikipedia frequency + CEFR adaptation (top-2000) |
+| Language | Source | Entries |
+|----------|--------|---------|
+| Dutch | SUBTLEX-NL (subtitle corpus) | ~400k lemmas |
+| Serbian | srLex 1.3 (lemma-aggregated) | ~100k entries |
+| English | SUBTLEX-US (subtitle corpus) | ~74k word forms |
 
 ### Step 3: LLM Enrichment — out of scope
 
@@ -109,168 +101,116 @@ Bot-side integration (LLM prompt updates, translation, fallback). See YourDutchB
 
 ## API Contract
 
+### Endpoints
+
+Three separate endpoints, one per language:
+
+```
+POST /nl/    # Dutch
+POST /en/    # English
+POST /sr/    # Serbian
+```
+
 ### Request
 
-```
-POST /extract
-Content-Type: application/json
-
+```json
 {
-  "text": "De minister wil de sociale zekerheid hervormen...",
-  "lang": "nl"
+  "text": "De minister belt bedrijven op om te praten.",
+  "level": "A0"
 }
 ```
+
+Authorization: `Bearer <API_KEY>` header.
 
 ### Response
 
 ```json
 {
   "language": "nl",
-  "lemmas": [
-    { "text": "sociale zekerheid", "pos": "NOUN", "span": [3, 5], "weight": 0.95, "is_a2": true },
-    { "text": "opbellen", "pos": "VERB", "span": [12, 13], "weight": 0.87, "is_a2": true },
-    { "text": "hervormen", "pos": "VERB", "span": [8, 9], "weight": 0.62, "is_a2": false }
+  "candidates": [
+    { "text": "op|bellen", "pos": "VERB", "rank": 423, "weight": 1.0, "in_target": true },
+    { "text": "bedrijf", "pos": "NOUN", "rank": 312, "weight": 1.0, "in_target": true },
+    { "text": "minister", "pos": "NOUN", "rank": 1842, "weight": 0.6, "in_target": false }
+  ],
+  "proper_nouns": [
+    { "text": "Amsterdam", "pos": "PROPN" }
+  ],
+  "numbers": [
+    { "text": "3500", "pos": "NUM" }
+  ],
+  "merged_fragments": [
+    { "parts": ["cross", "border"], "merged": "cross-border", "rule": "hyphen" }
   ]
 }
 ```
 
 **Fields:**
-- `text` — lemmatized form (reconstructed for separable verbs)
-- `pos` — Universal POS tag (NOUN, VERB, ADJ, PROPN)
-- `span` — token indices in original text
-- `weight` — 0-1 relevance score (CEFR match + frequency)
-- `is_a2` — whether the lemma appears in the A2 frequency list
+- `text` — lemmatized form; separable verbs use pipe format (`op|bellen`)
+- `pos` — Universal POS tag (NOUN, VERB, ADJ, ADV)
+- `rank` — frequency rank in language corpus (null if not found)
+- `weight` — 0-1 relevance score based on CEFR band
+- `in_target` — whether the word is in the target learning band for this level
 
-## Tech Stack
+## Deployment
 
-| Component | Choice | Reason |
-|-----------|--------|--------|
-| NLP       | Stanza | Best multilingual accuracy on CPU |
-| Keyphrases | YAKE  | Unsupervised, language-agnostic, no training needed |
-| API       | FastAPI (Python) | Lightweight, async, easy deploy |
-| Hosting   | Modal  | Free tier ($20/mo credits), no bundle size limits, container-based, good for ML workloads |
+### Channels
 
-### Why not JS?
+| Channel | Purpose | Entrypoint |
+|---------|---------|------------|
+| Modal API | Production (bot calls this) | `app.py` |
+| CLI (Textual) | Local testing & development | `cli.py` |
+| HF Space (Gradio) | Public demo | `gradio_app.py` |
 
-JS NLP libraries (WinkNLP, Compromise) achieve ~80-85% accuracy vs Stanza's 95%+ on UD benchmarks. For Dutch/Turkish/Serbian/Greek, the gap is larger. A separate Python microservice is worth the operational cost.
+### Modal Config
 
-### Why not pure LLM?
+- `@app.cls` with `enable_memory_snapshot` — snapshots loaded Stanza models so cold starts skip download/load
+- One class per language (Nl, En, Sr) with separate ASGI apps
+- `max_containers=1` — low traffic, single container sufficient
+- CPU-only (`cpu=1`) — Stanza performs well on CPU for short texts
 
-- NLP pre-filtering reduces LLM hallucinations (80-90% relevant phrases vs ~50% with pure LLM)
-- Cheaper: NLP step is free (CPU), reduces LLM prompt size
-- Faster: NLP < 1s, targeted LLM prompt is smaller and faster
-- Deterministic: same text always produces the same candidates
+### Performance
 
-## Hosting: Modal
-
-- **Free tier:** $20/month credits (sufficient for 100k+ inferences)
-- **Cold start:** 1-3s container boot + model load, mitigated by memory snapshots (snapshot persists initialized Stanza pipelines, so subsequent cold starts skip model loading — just container boot ~1-2s)
-- **Warm latency:** < 500ms per request
-- **Deploy:** `modal deploy app.py`
-- **Models:** stored in Modal volumes (~200MB per language, ~800MB total for 4 languages)
-
-### Why cold starts don't matter
-
-The vocab extraction runs during lesson generation, in parallel with MCQ question generation (`Promise.all` in `reading.ts`). The lesson flow already takes 5-10+ seconds (LLM text adaptation → MCQ generation → TTS audio). A 2-3s cold start is completely hidden behind work that's already happening. Even a worst-case 5s cold start on the very first lesson of the day adds no perceived latency.
-
-Traffic clusters in morning/evening windows (lesson time). One cold start per session, then warm for the rest. No need for keep-alive pings burning credits on idle compute.
-
-### Why not Vercel
-
-Vercel serverless functions have a 250MB compressed bundle limit. Stanza + PyTorch CPU (~150-200MB) plus 4 language models (~120-200MB) totals 300-400MB — exceeds the limit. Even with aggressive tree-shaking, PyTorch CPU alone is borderline.
-
-## Performance Requirements
-
-| Metric | Target |
+| Metric | Actual |
 |--------|--------|
-| Latency (warm) | < 1s per text |
-| Latency (cold) | < 5s |
-| Text size | Up to 500 words / 10 sentences |
-| Output | 10-15 lemmas per text |
-| Throughput | 1000+ requests/day |
-| Cost | < $0.01 per extraction (NLP only, no LLM) |
+| Latency (warm) | < 500ms |
+| Latency (cold, with snapshot) | ~2s |
+| Text size | Up to 4096 bytes |
+| Output | Up to 15 candidates |
+| Cost | < $0.01 per extraction |
 
-## Integration with Bot
-
-Bot-side integration is out of scope for this repo. See YourDutchBot repo: `PRD-vocab-v4-integration.md`.
-
-## Future: Level-Aware Filtering
-
-Accept learner level (A0, A1, A2) as an input parameter. The level controls which words are considered "already known" and filtered out:
-
-| Level | "Known" band | Effect |
-|-------|-------------|--------|
-| A0 | top ~500 | Surface almost everything — even basic words are new |
-| A1 | top ~1000 | Skip the most basic words, show A2-level vocab |
-| A2 | top ~2000 | Skip common words, surface B1-level vocab |
-
-This shifts the weight function's rank bands and the filtering threshold so that an A0 learner sees "groot" and "klein" while an A2 learner skips them in favor of less frequent words like "hervormen".
-
-## Benchmark Pipeline
-
-Systematic evaluation of vocab extraction quality against LLM baseline. Required before tuning rank band constants.
+## Benchmark
 
 ### Dataset
 
-Prepare **5 adapted texts per level** (A0, A1, A2) for Dutch and Serbian = 30 texts total.
+10 texts per level (A0, A1, A2) for Dutch, Serbian, and English = 90 texts total.
 
-Source: existing adapted texts from YourDutchBot lessons, or generate new ones with the bot's text adaptation prompt.
+Stored in `bench/texts/` with LLM baselines in `bench/baseline/`.
 
-Store in `bench/texts/`:
-```
-bench/texts/nl_a0_01.txt
-bench/texts/nl_a1_01.txt
-bench/texts/sr_a2_01.txt
-...
-```
+### Evaluation
 
-### LLM Baseline
+`bench/run.py` sends both pipeline output and LLM baseline to a GPT-5 judge. Judge scores each list 1-5 on Relevance, Coverage, and Noise.
 
-For each text, generate vocab with the bot's current LLM prompt (v1 approach). Store in `bench/baseline/`:
-```
-bench/baseline/nl_a0_01.json   # {"lemmas": ["geld", "huis", ...]}
-```
+### Results (Dutch, 30 texts)
 
-### Evaluation Pipeline
+| Level | Pipeline avg | LLM avg | Delta |
+|-------|-------------|---------|-------|
+| A0 | 4.6 | 2.5 | +2.10 |
+| A1 | 4.6 | 3.0 | +1.60 |
+| A2 | 4.5 | 3.5 | +1.00 |
+| **Overall** | **4.6** | **3.0** | **+1.57** |
 
-`bench/run.py`:
-1. For each text, run our pipeline at the matching level
-2. Collect: our candidates vs LLM baseline
-3. Send both to a judge LLM (Claude) with the prompt:
-   > "Given this A1 Dutch text, which vocabulary list is better for an A1 learner? Score each list 1-5 on: relevance, coverage, noise (false picks)."
-4. Output a summary table: text, level, our score, LLM score, delta
-5. Aggregate: **mean delta per level** (pipeline − LLM) + overall mean. Report Cohen's d (`mean(delta) / std(delta)`) as the single quality metric
-
-### Usage
-
-```
-uv run python bench/run.py                    # run full benchmark
-uv run python bench/run.py --level A1         # single level
-uv run python bench/run.py --lang nl          # single language
-```
-
-### What to tune
-
-Once the benchmark is in place, iterate on:
-- `LEVEL_BANDS` cutoffs (known/target per level)
-- Unknown word default weight
-- Whether DET should be included
-- Noun chunk extraction rules
-
-Each change re-runs the benchmark and shows the delta.
+**Cohen's d = 1.75** (large effect size; pipeline wins ~86% of the time).
 
 ## Open Questions
 
-- [x] Should PROPN (proper nouns like "Angela Merkel") be included or filtered out? → **Filtered out**, returned in separate `proper_nouns` list.
+- [x] Should PROPN be included or filtered out? → **Filtered out**, returned in separate `proper_nouns` list.
+- [x] Should separable verbs show dictionary form or split form? → **Pipe format** (`op|bellen`), Duolingo convention.
+- [x] What should the API field be called? → **`candidates`** (not `lemmas`, since pipe-format verbs aren't standard lemmas).
 - [ ] Should the ranking step use the learner's **known vocabulary** (from past lessons) to deprioritize already-learned words?
 - [ ] Is Modal the right long-term host, or should this move to a sidecar on the Vercel deployment?
-- [ ] Which CEFR lists are freely available and redistributable for Serbian and Greek?
 
 ## References
 
 - [Stanza](https://stanfordnlp.github.io/stanza/) — Stanford NLP library
-- [YAKE](https://github.com/LIAAD/yake) — unsupervised keyword extraction
 - [NT2Lex](https://aclanthology.org/W18-0514/) — Dutch CEFR-graded lexicon
-- [PhraseMachine](https://github.com/slanglab/phrasemachine) — English-only, evaluated and rejected
-- [KB Dutch Compound Splitting](https://kdutch.ivdnt.org/wiki/Compound_splitting)
-- [spacy-stanza bridge](https://pypi.org/project/spacy-stanza/)
+- [SUBTLEX-NL](http://crr.ugent.be/programs-data/subtitle-frequencies/subtlex-nl) — Dutch subtitle frequency corpus
