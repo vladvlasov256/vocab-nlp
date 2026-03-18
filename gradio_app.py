@@ -43,7 +43,7 @@ def analyze(text: str, lang: str, level: str):
     result = extract(doc, lang, _freqs[lang], level=level)
 
     bands = LANG_PRESETS[lang]["levels"][level]["band"]
-    all_lemmas = result["lemmas"]
+    all_lemmas = result["candidates"]
 
     def _band(item):
         rank = item.get("rank")
@@ -81,8 +81,8 @@ with gr.Blocks(title="vocab-nlp") as demo:
             btn = gr.Button("Submit", variant="primary")
 
         with gr.Column():
-            candidates_out = gr.Dataframe(headers=["Lemma", "POS", "Rank", "Band"], label="Candidates")
-            filtered_out = gr.Dataframe(headers=["Lemma", "POS", "Rank", "Band"], label="Filtered out")
+            candidates_out = gr.Dataframe(headers=["Candidate", "POS", "Rank", "Band"], label="Candidates")
+            filtered_out = gr.Dataframe(headers=["Candidate", "POS", "Rank", "Band"], label="Filtered out")
             with gr.Row():
                 propn_out = gr.Dataframe(headers=["Name"], label="Proper Nouns")
                 nums_out = gr.Dataframe(headers=["Number"], label="Numbers")

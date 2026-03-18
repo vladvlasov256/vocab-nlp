@@ -227,7 +227,7 @@ class VocabApp(App):
 
         # Vocab tables
         result = extract(doc, self.lang, self.freq, level=self.level)
-        all_lemmas = result["lemmas"]
+        all_lemmas = result["candidates"]
 
         above = [item for item in all_lemmas if item["weight"] > self.threshold]
         below = [item for item in all_lemmas if item["weight"] <= self.threshold]

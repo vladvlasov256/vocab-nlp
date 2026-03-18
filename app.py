@@ -61,7 +61,7 @@ def _make_fastapi_app(cls_instance):
         text = trim_text(text)
         doc = cls_instance.pipeline(text)
         result = extract(doc, lang, cls_instance.freq, level=level)
-        result["lemmas"] = [l for l in result["lemmas"] if l["weight"] > 0.5][:MAX_LEMMAS]
+        result["candidates"] = [c for c in result["candidates"] if c["weight"] > 0.5][:MAX_LEMMAS]
         return result
 
     return web_app

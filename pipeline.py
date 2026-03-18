@@ -210,16 +210,18 @@ def extract_separable_verbs(sent) -> list[dict]:
             particles.append(word)
 
     results = []
+    replaced_verb_ids = set()
     for particle in particles:
         verb = verbs.get(particle.head)
         if verb:
-            reconstructed = particle.text.lower() + verb.lemma
+            reconstructed = particle.text.lower() + "|" + verb.lemma
             results.append({
                 "text": reconstructed,
                 "pos": "VERB",
                 "_rank_key": verb.lemma.lower(),
             })
-    return results
+            replaced_verb_ids.add(verb.id)
+    return results, replaced_verb_ids
 
 
 # Dutch compound connectors used between parts of compound words.
@@ -383,13 +385,18 @@ def extract(doc, lang: str, freq: dict[str, int], level: str = "A0") -> dict:
                 # lowercase "payments" (legitimate) isn't blocked by "Payments" (PROPN).
                 if word.text in propn_surfaces:
                     continue
-                candidates.append({"text": word.lemma, "pos": word.upos, "_surface": word.text, "_sent_initial": word.id == 1})
+                item = {"text": word.lemma, "pos": word.upos, "_surface": word.text, "_sent_initial": word.id == 1}
+                if word.upos == "VERB":
+                    item["_verb_id"] = word.id
+                candidates.append(item)
             elif word.upos not in _DROPPED_POS:
                 logging.getLogger("pipeline").warning(f"Unhandled POS: {word.upos} for '{word.text}'")
 
-        # Separable verbs: "belt...op" → "opbellen" (Dutch, German)
+        # Separable verbs: "belt...op" → "op|bellen" (Dutch, German)
         if LANG_PRESETS[lang].get("separable_verbs", False):
-            candidates.extend(extract_separable_verbs(sent))
+            sep_verbs, sep_verb_ids = extract_separable_verbs(sent)
+            candidates = [c for c in candidates if c.get("_verb_id") not in sep_verb_ids]
+            candidates.extend(sep_verbs)
 
     # --- Step 2: Clean compound lemmas ---
     # Stanza splits Dutch compounds with underscores; try to rejoin them
@@ -448,6 +455,7 @@ def extract(doc, lang: str, freq: dict[str, int], level: str = "A0") -> dict:
     for item in unique:
         item.pop("_surface", None)
         item.pop("_sent_initial", None)
+        item.pop("_verb_id", None)
         rank_key = item.pop("_rank_key", item["text"].lower())
         rank = freq.get(rank_key)
         item["rank"] = rank
@@ -476,4 +484,4 @@ def extract(doc, lang: str, freq: dict[str, int], level: str = "A0") -> dict:
             seen_num.add(item["text"])
             unique_num.append(item)
 
-    return {"language": lang, "lemmas": unique, "proper_nouns": unique_propn, "numbers": unique_num, "merged_fragments": merged_fragments}
+    return {"language": lang, "candidates": unique, "proper_nouns": unique_propn, "numbers": unique_num, "merged_fragments": merged_fragments}
