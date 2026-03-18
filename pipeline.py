@@ -296,6 +296,27 @@ def extract(doc, lang: str, freq: dict[str, int], level: str = "A0") -> dict:
         # Identify tokens to skip (merged into a neighbor)
         _skip = set()
 
+        # Merge hyphenated compounds: "cross-border" → "cross" + "-" + "border"
+        # Stanza splits hyphenated words into parts with deprel=compound
+        # and a PUNCT "-" between them. Rejoin into "part1-part2".
+        for word in sent.words:
+            if word.deprel == "compound" and word.head > 0 and word.id not in _skip:
+                head = words_by_id.get(word.head)
+                hyphen = words_by_id.get(word.id + 1)
+                if (head and hyphen
+                        and hyphen.text == "-" and hyphen.upos == "PUNCT"
+                        and hyphen.id + 1 == head.id):
+                    merged_text = f"{word.text}-{head.text}"
+                    merged_fragments.append({
+                        "parts": [word.text, head.text],
+                        "merged": merged_text,
+                        "rule": "hyphen",
+                    })
+                    head.text = merged_text
+                    head.lemma = merged_text
+                    _skip.add(word.id)
+                    _skip.add(hyphen.id)
+
         # Merge single-char compound fragments with their head.
         # Stanza splits "XA90P" → "XA90"(compound→Token) + "P"(compound→Token)
         # and "95p" → "95"(nummod→p) + "p". Rejoin these before collection.
