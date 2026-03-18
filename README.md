@@ -108,23 +108,23 @@ uv run --group bench python bench/run.py --lang en
 uv run --group bench python bench/run.py --text en_a2_03 -v  # single text, print judge prompt
 ```
 
-### Dutch — Cohen's d = 1.29
+### Dutch — Cohen's d = 1.52
 
 | Level | Pipeline avg | LLM avg | Delta |
 |-------|-------------|---------|-------|
-| A0 | 4.8 | 2.3 | +2.50 |
-| A1 | 4.5 | 3.0 | +1.50 |
-| A2 | 4.3 | 3.8 | +0.50 |
-| **Overall** | **4.5** | **3.0** | **+1.50** |
+| A0 | 4.4 | 2.2 | +2.20 |
+| A1 | 4.6 | 3.1 | +1.50 |
+| A2 | 4.5 | 3.6 | +0.90 |
+| **Overall** | **4.5** | **3.0** | **+1.53** |
 
-### Serbian — Cohen's d = 1.30
+### Serbian — Cohen's d = 1.59
 
 | Level | Pipeline avg | LLM avg | Delta |
 |-------|-------------|---------|-------|
 | A0 | 4.8 | 2.6 | +2.20 |
-| A1 | 4.6 | 2.9 | +1.70 |
-| A2 | 4.4 | 4.0 | +0.40 |
-| **Overall** | **4.6** | **3.2** | **+1.43** |
+| A1 | 4.8 | 2.8 | +2.00 |
+| A2 | 4.3 | 3.7 | +0.60 |
+| **Overall** | **4.6** | **3.0** | **+1.60** |
 
 ### English — Cohen's d = 1.51
 
