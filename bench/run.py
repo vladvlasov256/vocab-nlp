@@ -53,7 +53,7 @@ Respond with ONLY valid JSON, no markdown:
 """
 
 
-def discover_texts(lang: str | None = None, level: str | None = None) -> list[dict]:
+def discover_texts(lang: str | None = None, level: str | None = None, text_name: str | None = None) -> list[dict]:
     """Find all text/baseline pairs matching filters."""
     texts = []
     for txt_path in sorted(TEXTS_DIR.glob("*.txt")):
@@ -66,6 +66,8 @@ def discover_texts(lang: str | None = None, level: str | None = None) -> list[di
         if lang and t_lang != lang:
             continue
         if level and t_level != level:
+            continue
+        if text_name and name != text_name:
             continue
 
         baseline_path = BASELINE_DIR / f"{name}.json"
@@ -102,6 +104,7 @@ def judge(client: OpenAI, text: str, lang: str, level: str, pipeline_lemmas: lis
         list_a=", ".join(pipeline_lemmas),
         list_b=", ".join(baseline_lemmas),
     )
+    logging.getLogger("bench").info(f"\n{'='*60}\nJUDGE PROMPT for {level} text:\n{'='*60}\n{prompt}\n{'='*60}")
     response = client.chat.completions.create(
         model=JUDGE_MODEL,
         messages=[{"role": "user", "content": prompt}],
@@ -116,13 +119,20 @@ def main():
 
     parser = argparse.ArgumentParser(description="Run vocab-nlp benchmark")
     parser.add_argument("--level", type=str, help="Filter by level (A0, A1, A2)")
+    parser.add_argument("--text", type=str, help="Filter by text name (e.g. en_a2_03)")
     parser.add_argument("--lang", type=str, help="Filter by language (nl, sr)")
+    parser.add_argument("--verbose", "-v", action="store_true", help="Print judge prompts")
     args = parser.parse_args()
+
+    if args.verbose:
+        logging.getLogger("bench").setLevel(logging.INFO)
+        logging.getLogger("bench").addHandler(logging.StreamHandler())
 
     level_filter = args.level.upper() if args.level else None
     lang_filter = args.lang if args.lang else None
 
-    texts = discover_texts(lang=lang_filter, level=level_filter)
+    text_filter = args.text if args.text else None
+    texts = discover_texts(lang=lang_filter, level=level_filter, text_name=text_filter)
     if not texts:
         print("No matching texts found.")
         return

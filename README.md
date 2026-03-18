@@ -105,6 +105,7 @@ Displays three panels: **Candidates** (above threshold), **Filtered out** (below
 uv run --group bench python bench/run.py --lang nl
 uv run --group bench python bench/run.py --lang sr
 uv run --group bench python bench/run.py --lang en
+uv run --group bench python bench/run.py --text en_a2_03 -v  # single text, print judge prompt
 ```
 
 ### Dutch — Cohen's d = 1.29
