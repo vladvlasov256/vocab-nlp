@@ -28,24 +28,46 @@ for lang in LANGUAGES:
     _pipelines[lang] = create_stanza_pipeline(lang)
     _freqs[lang] = FREQ_LOADERS[lang]()
 
+_THRESHOLD = 0.5
+
+_DEFAULT_TEXT = "Anna lives in Amsterdam and works at a hospital. She earns 3500 euros per month. Last Wednesday she bought 12 tulips for her grandmother. The flowers were expensive but very beautiful."
+
 
 def analyze(text: str, lang: str, level: str):
+    empty = [], [], [], [], []
     if not text.strip():
-        return [], [], []
+        return empty
 
     text = trim_text(text)
     doc = _pipelines[lang](text)
     result = extract(doc, lang, _freqs[lang], level=level)
-    result["lemmas"] = [l for l in result["lemmas"] if l["weight"] > 0.5][:MAX_LEMMAS]
 
-    candidates = [
-        [item["text"], item["pos"], item.get("rank") or "—", "target" if item["in_target"] else "beyond"]
-        for item in result["lemmas"]
+    bands = LANG_PRESETS[lang]["levels"][level]["band"]
+    all_lemmas = result["lemmas"]
+
+    def _band(item):
+        rank = item.get("rank")
+        if rank is None:
+            return "?"
+        if rank <= bands["known"]:
+            return "known"
+        if rank <= bands["target"]:
+            return "target"
+        return "beyond"
+
+    above = [item for item in all_lemmas if item["weight"] > _THRESHOLD][:MAX_LEMMAS]
+    below = [item for item in all_lemmas if item["weight"] <= _THRESHOLD]
+
+    candidates = [[i["text"], i["pos"], i.get("rank") or "—", _band(i)] for i in above]
+    filtered = [[i["text"], i["pos"], i.get("rank") or "—", _band(i)] for i in below]
+    propn = [[i["text"]] for i in result.get("proper_nouns", [])]
+    nums = [[i["text"]] for i in result.get("numbers", [])]
+    merged = [
+        [" + ".join(i["parts"]), i["merged"], i["rule"]]
+        for i in result.get("merged_fragments", [])
     ]
-    propn = [[item["text"]] for item in result.get("proper_nouns", [])]
-    nums = [[item["text"]] for item in result.get("numbers", [])]
 
-    return candidates, propn, nums
+    return candidates, filtered, propn, nums, merged
 
 
 with gr.Blocks(title="vocab-nlp") as demo:
@@ -53,22 +75,23 @@ with gr.Blocks(title="vocab-nlp") as demo:
 
     with gr.Row():
         with gr.Column():
-            text_input = gr.Textbox(label="Text", lines=4, placeholder="Enter text to analyze...")
-            lang_input = gr.Dropdown(choices=LANGUAGES, value="nl", label="Language")
-            level_input = gr.Dropdown(choices=LEVELS, value="A0", label="CEFR Level")
+            text_input = gr.Textbox(label="Text", lines=4, value=_DEFAULT_TEXT)
+            lang_input = gr.Dropdown(choices=LANGUAGES, value="en", label="Language")
+            level_input = gr.Dropdown(choices=LEVELS, value="A1", label="CEFR Level")
             btn = gr.Button("Submit", variant="primary")
 
         with gr.Column():
-            candidates_out = gr.Dataframe(
-                headers=["Lemma", "POS", "Rank", "Band"],
-                label="Candidates",
-            )
+            candidates_out = gr.Dataframe(headers=["Lemma", "POS", "Rank", "Band"], label="Candidates")
+            filtered_out = gr.Dataframe(headers=["Lemma", "POS", "Rank", "Band"], label="Filtered out")
             with gr.Row():
                 propn_out = gr.Dataframe(headers=["Name"], label="Proper Nouns")
                 nums_out = gr.Dataframe(headers=["Number"], label="Numbers")
+            merged_out = gr.Dataframe(headers=["Parts", "Result", "Rule"], label="Merged Fragments")
 
-    btn.click(analyze, inputs=[text_input, lang_input, level_input], outputs=[candidates_out, propn_out, nums_out])
-    text_input.submit(analyze, inputs=[text_input, lang_input, level_input], outputs=[candidates_out, propn_out, nums_out])
+    inputs = [text_input, lang_input, level_input]
+    outputs = [candidates_out, filtered_out, propn_out, nums_out, merged_out]
+    btn.click(analyze, inputs=inputs, outputs=outputs)
+    text_input.submit(analyze, inputs=inputs, outputs=outputs)
 
 if __name__ == "__main__":
     demo.launch()
