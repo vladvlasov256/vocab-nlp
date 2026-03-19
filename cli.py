@@ -227,23 +227,23 @@ class VocabApp(App):
 
         # Vocab tables
         result = extract(doc, self.lang, self.freq, level=self.level)
-        all_lemmas = result["candidates"]
+        all_items = result["items"]
 
-        above = [item for item in all_lemmas if item["weight"] > self.threshold]
-        below = [item for item in all_lemmas if item["weight"] <= self.threshold]
+        above = [item for item in all_items if item["score"] > self.threshold]
+        below = [item for item in all_items if item["score"] <= self.threshold]
 
         bands = LANG_PRESETS[self.lang]["levels"][self.level]["band"]
 
         def _make_table(items):
             table = Table(show_lines=False, pad_edge=False, expand=True)
-            table.add_column("Lemma", style="bold")
-            table.add_column("POS", style="yellow")
-            table.add_column("Weight", justify="right")
+            table.add_column("Text", style="bold")
+            table.add_column("Type", style="yellow")
+            table.add_column("Score", justify="right")
             table.add_column("Band", style="dim")
 
             for item in items:
-                w = item["weight"]
-                weight_style = "green" if w >= 0.9 else "yellow" if w >= 0.5 else "red"
+                s = item["score"]
+                score_style = "green" if s >= 0.9 else "yellow" if s >= 0.5 else "red"
                 rank = item.get("rank")
                 if rank is None:
                     band = "?"
@@ -253,7 +253,8 @@ class VocabApp(App):
                     band = "target"
                 else:
                     band = "beyond"
-                table.add_row(item["text"], item["pos"], f"[{weight_style}]{w:.2f}[/{weight_style}]", band)
+                label = item.get("pos", item["type"])
+                table.add_row(item["text"], label, f"[{score_style}]{s:.2f}[/{score_style}]", band)
             return table
 
         # Build panels, skip empty ones

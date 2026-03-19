@@ -257,6 +257,95 @@ def _clean_lemma(text: str, freq: dict[str, int] | None = None) -> str:
     return re.sub(r"[_]+", " ", text).strip()
 
 
+_PHRASE_BIGRAMS = {
+    ("ADJ", "NOUN"): "noun_phrase",
+    ("NOUN", "NOUN"): "noun_phrase",
+    ("VERB", "NOUN"): "verb_phrase",
+    ("VERB", "ADP"): "verb_phrase",
+}
+
+_DEP_NOUN_RELS = {"amod", "compound"}
+_DEP_VERB_RELS = {"obj"}
+
+
+def extract_phrases(doc, lang: str, freq: dict[str, int], level: str = "A0") -> list[dict]:
+    """Extract multi-word phrase candidates from dependency parse and POS bigrams.
+
+    Two extraction methods run in parallel:
+    1. Dependency-based: ADJ→NOUN (amod), NOUN→NOUN (compound/nmod),
+       VERB→NOUN (obj/obl/iobj), VERB→ADP (obl/case)
+    2. Linear bigram fallback: adjacent tokens matching POS patterns
+
+    Scoring uses max(component_weights) so phrases compete on the same
+    0-1 scale as single-word candidates.
+    """
+    candidates = []
+
+    for sent in doc.sentences:
+        # --- Dependency-based extraction ---
+        for word in sent.words:
+            if word.upos == "NOUN":
+                for dep in sent.words:
+                    if (dep.head == word.id
+                            and dep.deprel in _DEP_NOUN_RELS
+                            and dep.upos in ("ADJ", "NOUN")):
+                        parts = sorted([dep, word], key=lambda w: w.id)
+                        candidates.append(_make_phrase(parts, "noun_phrase", "dep", freq))
+
+            if word.upos == "VERB":
+                for dep in sent.words:
+                    if (dep.head == word.id
+                            and dep.deprel in _DEP_VERB_RELS
+                            and dep.upos in ("NOUN", "ADP")):
+                        parts = sorted([word, dep], key=lambda w: w.id)
+                        candidates.append(_make_phrase(parts, "verb_phrase", "dep", freq))
+
+        # --- Linear bigram fallback ---
+        words = sent.words
+        for i in range(len(words) - 1):
+            pair = (words[i].upos, words[i + 1].upos)
+            ptype = _PHRASE_BIGRAMS.get(pair)
+            if ptype:
+                candidates.append(_make_phrase([words[i], words[i + 1]], ptype, "ngram", freq))
+
+    # --- Deduplicate by lemma-normalized text ---
+    seen = set()
+    unique = []
+    for c in candidates:
+        if c["text"] not in seen:
+            seen.add(c["text"])
+            unique.append(c)
+
+    # --- Score: max(component_weights) + adjustments ---
+    scored = []
+    for c in unique:
+        weights = [rank_to_weight(freq.get(comp), lang, level) for comp in c["_components"]]
+        if all(w <= 0.3 for w in weights):
+            continue  # all known-band → boring
+        score = max(weights)
+        if c["type"] == "verb_phrase":
+            score += 0.05
+        if all(0.3 < w <= 1.0 for w in weights):
+            score += 0.05  # all target-band
+        c["score"] = min(score, 1.0)
+        scored.append(c)
+
+    scored.sort(key=lambda c: c["score"], reverse=True)
+    return scored[:20]
+
+
+def _make_phrase(parts: list, ptype: str, source: str, freq: dict[str, int] | None = None) -> dict:
+    """Build a phrase candidate dict from a list of Stanza words."""
+    components = [_clean_lemma(p.lemma, freq).lower() for p in parts]
+    return {
+        "surface": " ".join(p.text for p in parts),
+        "text": " ".join(components),
+        "type": ptype,
+        "source": source,
+        "_components": components,
+    }
+
+
 def extract(doc, lang: str, freq: dict[str, int], level: str = "A0") -> dict:
     """Extract and rank vocabulary candidates from a Stanza doc.
 
@@ -467,6 +556,38 @@ def extract(doc, lang: str, freq: dict[str, int], level: str = "A0") -> dict:
 
     unique.sort(key=lambda x: x["weight"], reverse=True)
 
+    # --- Step 7: Phrase extraction ---
+    phrases = extract_phrases(doc, lang, freq, level)
+
+    # --- Step 8: Merge into unified items list ---
+    # Only phrases above threshold swallow their component singles.
+    # Rejected phrases must not eat singles — the single is the fallback.
+    _THRESHOLD = 0.5
+    phrase_components = set()
+    for p in phrases:
+        components = p.pop("_components")
+        if p["score"] > _THRESHOLD:
+            phrase_components.update(components)
+
+    items = []
+    for item in unique:
+        if item["text"].lower() in phrase_components:
+            continue
+        items.append({
+            "text": item["text"],
+            "surface": item["text"],
+            "type": "single",
+            "score": item["weight"],
+            "pos": item["pos"],
+            "rank": item["rank"],
+            "in_target": item["in_target"],
+        })
+    for p in phrases:
+        if p["score"] > _THRESHOLD:
+            items.append(p)
+
+    items.sort(key=lambda x: x["score"], reverse=True)
+
     # Deduplicate proper nouns
     seen_propn = set()
     unique_propn = []
@@ -484,4 +605,4 @@ def extract(doc, lang: str, freq: dict[str, int], level: str = "A0") -> dict:
             seen_num.add(item["text"])
             unique_num.append(item)
 
-    return {"language": lang, "candidates": unique, "proper_nouns": unique_propn, "numbers": unique_num, "merged_fragments": merged_fragments}
+    return {"language": lang, "items": items, "proper_nouns": unique_propn, "numbers": unique_num, "merged_fragments": merged_fragments}

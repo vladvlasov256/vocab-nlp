@@ -43,7 +43,7 @@ def analyze(text: str, lang: str, level: str):
     result = extract(doc, lang, _freqs[lang], level=level)
 
     bands = LANG_PRESETS[lang]["levels"][level]["band"]
-    all_lemmas = result["candidates"]
+    all_items = result["items"]
 
     def _band(item):
         rank = item.get("rank")
@@ -55,11 +55,11 @@ def analyze(text: str, lang: str, level: str):
             return "target"
         return "beyond"
 
-    above = [item for item in all_lemmas if item["weight"] > _THRESHOLD][:MAX_LEMMAS]
-    below = [item for item in all_lemmas if item["weight"] <= _THRESHOLD]
+    above = [item for item in all_items if item["score"] > _THRESHOLD][:MAX_LEMMAS]
+    below = [item for item in all_items if item["score"] <= _THRESHOLD]
 
-    candidates = [[i["text"], i["pos"], i.get("rank") or "—", _band(i)] for i in above]
-    filtered = [[i["text"], i["pos"], i.get("rank") or "—", _band(i)] for i in below]
+    candidates = [[i["text"], i.get("pos", i["type"]), i.get("rank") or "—", _band(i)] for i in above]
+    filtered = [[i["text"], i.get("pos", i["type"]), i.get("rank") or "—", _band(i)] for i in below]
     propn = [[i["text"]] for i in result.get("proper_nouns", [])]
     nums = [[i["text"]] for i in result.get("numbers", [])]
     merged = [
