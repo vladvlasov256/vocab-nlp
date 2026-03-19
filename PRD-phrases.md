@@ -35,9 +35,10 @@ Add a phrase extraction layer that produces 2-4 word candidate phrases alongside
 The phrase extractor does NOT need to be smart. It needs to be **generous but not garbage**:
 
 - Extract 15-20 phrase candidates
-- LLM picks the best 4-6 from the combined pool (singles + phrases)
+- Score them on the same 0-1 scale as singles (using component word frequencies)
+- Bot takes top N from the unified ranked list, same as v4
 
-The extractor over-generates; the scoring heuristics curate. No LLM re-ranking needed — the bot takes top N from the ranked list, same as v4.
+The extractor over-generates; the scoring heuristics curate. No LLM involved in ranking.
 
 ## Candidate types
 
@@ -240,18 +241,25 @@ Even if lemmatization is imperfect, having both fields is essential for deduplic
 
 ## Scoring
 
-Simple composite score, no ML:
+Phrase scores must be on the same 0-1 scale as single-word weights so the bot can sort a unified list.
 
-### Signals
+### Base score: component frequency
 
-| Signal | Points | Rationale |
-|--------|--------|-----------|
-| **Type bonus** | verb_phrase +3, noun_phrase +2 | Verb phrases are more pedagogically useful |
-| **Repetition** | +2 if phrase/lemma occurs >1 time | Repeated phrases are central to the text |
-| **Title bonus** | +2 if a component word appears in title | Title words are topically important |
-| **Content density** | +1..2 based on % of content words | Fewer stop words = more useful |
-| **Length penalty** | 2-3 words: 0, 4 words: -1, 5 words: -3 | Short phrases are better for glossaries |
-| **Boring penalty** | -2 if all components are very high frequency | "veel mensen", "dit moment" = noise |
+```
+phrase_weight = max(component_weights)
+```
+
+Each component word gets its CEFR band weight (known=0.3, target=1.0, beyond=0.6) from the frequency list — same logic as v4 single-word scoring. The phrase takes the **max** — if any component is new to the learner, the phrase is worth teaching.
+
+### Adjustments
+
+| Signal | Adjustment | Rationale |
+|--------|-----------|-----------|
+| **verb_phrase** | +0.05 | Verb phrases are more pedagogically useful |
+| **All components in target band** | +0.05 | Pure learning value |
+| **Repeated in text** | +0.05 | Repeated phrases are central to the text |
+| **One component is stopword** | -0.05 | Less useful as a phrase |
+| **All components in known band** | hard reject | "veel mensen", "dit moment" = noise |
 
 ### Anti-patterns (hard reject)
 
@@ -280,11 +288,12 @@ Caught by:
 
 - Duplicates by lemma-normalized form
 - Phrases fully contained in a higher-scoring phrase (keep the better one)
-- Single-word candidates that are fully covered by a selected phrase
+- Singles whose lemma appears as a component of a selected phrase (phrases swallow their parts)
 
 Example:
-- Keep `gesprekken voeren` → drop standalone `voeren`
-- Keep `hoge prijs` → drop standalone `prijs` (maybe — see open questions)
+- Keep `gesprekken voeren` → drop standalone `gesprek` and `voeren`
+- Keep `hoge prijs` → drop standalone `hoog` and `prijs`
+- Keep standalone `op|bellen` if no phrase contains it
 
 ## Pipeline integration
 
@@ -558,17 +567,19 @@ def extract_phrase_candidates(doc, title_tokens, freq, lang):
                     "source": "ngram",
                 })
 
-    # --- Score ---
+    # --- Score (same 0-1 scale as single-word weights) ---
 
     for c in candidates:
-        c["score"] = (
-            type_bonus(c)           # verb_phrase +3, noun_phrase +2
-            + repetition_bonus(c, doc)  # +2 if appears >1 time
-            + title_bonus(c, title_tokens)  # +2 if component in title
-            + density_bonus(c)      # +1..2 based on content word %
-            - length_penalty(c)     # 2-3 words: 0, 4: -1, 5+: -3
-            - boring_penalty(c, freq)  # -2 if all components very high freq
-        )
+        component_weights = [cefr_weight(w.lemma, freq, level) for w in c["_words"]]
+        if all(w <= 0.3 for w in component_weights):
+            continue  # all known-band → boring, skip
+        c["score"] = max(component_weights)
+        if c["type"] == "verb_phrase":
+            c["score"] += 0.05
+        if all(0.3 < w <= 1.0 for w in component_weights):
+            c["score"] += 0.05  # all target-band
+        # cap at 1.0
+        c["score"] = min(c["score"], 1.0)
 
     # --- Filter and dedupe ---
 
@@ -583,11 +594,11 @@ def extract_phrase_candidates(doc, title_tokens, freq, lang):
 
 ## Open questions
 
-- [ ] Should phrases that contain a single-word candidate suppress that candidate? (e.g., if "hoge prijs" is selected, drop standalone "prijs"?)
-- [ ] How to handle Serbian case forms in phrases — always nominative/infinitive, or show the form as it appears?
-- [ ] Should the phrase score consider position in text (title, first sentence)?
-- [ ] Is a per-language stopphrase list maintainable, or should it be purely rule-based?
-- [ ] Should dep-based and ngram candidates be deduplicated against each other, or kept as separate signals?
+- [x] Should phrases that contain a single-word candidate suppress that candidate? → **Yes.** Phrases swallow their component singles. If "hoge prijs" is selected, standalone "prijs" and "hoog" are dropped.
+- [x] How to handle Serbian case forms in phrases? → **Always lemmatize.** `text` field is nominative/infinitive, `surface` keeps original form.
+- [x] Should the phrase score consider position in text? → **No.** Keep it simple — frequency-based scoring is enough for short texts.
+- [x] Is a per-language stopphrase list maintainable? → **Skip it.** Start with rules only ("all components known-band → reject"). Add a stopphrase list later if benchmark shows noise.
+- [x] Should dep-based and ngram candidates be deduplicated? → **Yes.** Dedupe by lemma-normalized form. `source` field records which method found it first.
 
 ## Success criteria
 
