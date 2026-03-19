@@ -257,6 +257,16 @@ def _clean_lemma(text: str, freq: dict[str, int] | None = None) -> str:
     return re.sub(r"[_]+", " ", text).strip()
 
 
+# Per-language rank caps for phrase filtering. Words ranked below these
+# thresholds are too generic to form useful collocations.
+# "hebben contract" (verb rank ~23 in NL) is noise,
+# "voeren gesprek" (verb rank ~800 in NL) is a real collocation.
+_PHRASE_RANK_CAPS = {
+    "nl": {"VERB": 250, "ADJ": 400, "NOUN": 100},
+    "en": {"VERB": 150, "ADJ": 300, "NOUN": 80},
+    "sr": {"VERB": 150, "ADJ": 300, "NOUN": 80},
+}
+
 _PHRASE_BIGRAMS = {
     ("ADJ", "NOUN"): "noun_phrase",
     ("NOUN", "NOUN"): "noun_phrase",
@@ -316,12 +326,27 @@ def extract_phrases(doc, lang: str, freq: dict[str, int], level: str = "A0") -> 
             seen.add(c["text"])
             unique.append(c)
 
+    # --- Filter: both components must be in freq list ---
+    # Phrases with unknown components are likely Stanza artifacts, not real collocations.
+    unique = [c for c in unique if all(freq.get(comp) is not None for comp in c["_components"])]
+
     # --- Score: max(component_weights) + adjustments ---
     scored = []
     for c in unique:
         weights = [rank_to_weight(freq.get(comp), lang, level) for comp in c["_components"]]
-        if all(w <= 0.3 for w in weights):
-            continue  # all known-band → boring
+        if not any(w >= 1.0 for w in weights):
+            continue  # at least one component must be in target band
+        # Skip phrases where any component is too generic for its POS.
+        # "hebben contract" (verb rank ~5) is noise; "voeren gesprek" (rank ~800) is real.
+        too_generic = False
+        lang_caps = _PHRASE_RANK_CAPS.get(lang, {})
+        for comp, pos in zip(c["_components"], c["_component_pos"]):
+            cap = lang_caps.get(pos)
+            if cap and freq.get(comp, float("inf")) <= cap:
+                too_generic = True
+                break
+        if too_generic:
+            continue
         score = max(weights)
         if c["type"] == "verb_phrase":
             score += 0.05
@@ -343,6 +368,7 @@ def _make_phrase(parts: list, ptype: str, source: str, freq: dict[str, int] | No
         "type": ptype,
         "source": source,
         "_components": components,
+        "_component_pos": [p.upos for p in parts],
     }
 
 
@@ -566,6 +592,7 @@ def extract(doc, lang: str, freq: dict[str, int], level: str = "A0") -> dict:
     phrase_components = set()
     for p in phrases:
         components = p.pop("_components")
+        p.pop("_component_pos", None)
         if p["score"] > _THRESHOLD:
             phrase_components.update(components)
 
