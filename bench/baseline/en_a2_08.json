@@ -1,14 +1,17 @@
 {
   "level": "A2",
   "lemmas": [
+    "company",
     "help",
-    "work",
-    "start",
-    "read",
-    "publish",
-    "important",
-    "agreement",
     "information",
-    "research"
+    "library",
+    "agreement",
+    "researcher",
+    "journal",
+    "publish",
+    "open access",
+    "university",
+    "scientist",
+    "study"
   ]
 }
