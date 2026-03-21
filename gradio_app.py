@@ -34,7 +34,7 @@ _DEFAULT_TEXT = "Anna lives in Amsterdam and works at a hospital. She earns 3500
 
 
 def analyze(text: str, lang: str, level: str):
-    empty = [], [], [], [], []
+    empty = [], [], [], [], [], []
     if not text.strip():
         return empty
 
@@ -66,8 +66,9 @@ def analyze(text: str, lang: str, level: str):
         [" + ".join(i["parts"]), i["merged"], i["rule"]]
         for i in result.get("merged_fragments", [])
     ]
+    generic = [[i["text"], i["type"], f"{i['score']:.2f}"] for i in result.get("generic_phrases", [])]
 
-    return candidates, filtered, propn, nums, merged
+    return candidates, filtered, propn, nums, merged, generic
 
 
 with gr.Blocks(title="vocab-nlp") as demo:
@@ -87,9 +88,10 @@ with gr.Blocks(title="vocab-nlp") as demo:
                 propn_out = gr.Dataframe(headers=["Name"], label="Proper Nouns")
                 nums_out = gr.Dataframe(headers=["Number"], label="Numbers")
             merged_out = gr.Dataframe(headers=["Parts", "Result", "Rule"], label="Merged Fragments")
+            generic_out = gr.Dataframe(headers=["Phrase", "Type", "Score"], label="Generic Phrases")
 
     inputs = [text_input, lang_input, level_input]
-    outputs = [candidates_out, filtered_out, propn_out, nums_out, merged_out]
+    outputs = [candidates_out, filtered_out, propn_out, nums_out, merged_out, generic_out]
     btn.click(analyze, inputs=inputs, outputs=outputs)
     text_input.submit(analyze, inputs=inputs, outputs=outputs)
 
