@@ -88,7 +88,7 @@ def run_pipeline(text: str, lang: str, level: str, nlp, freq) -> list[str]:
     """Run our extraction pipeline, return lemma list."""
     trimmed = trim_text(text)
     doc = nlp(trimmed)
-    result = extract(doc, lang, freq, level=level)
+    result = extract(doc, lang, freq, level=level, join_separable=True)
     # Filter same as API: weight > 0.5, top 15
     lemmas = [item["text"] for item in result["items"] if item["score"] > 0.5][:15]
     return lemmas

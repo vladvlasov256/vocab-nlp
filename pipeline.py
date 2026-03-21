@@ -330,6 +330,11 @@ def extract_phrases(doc, lang: str, freq: dict[str, int], level: str = "A0") -> 
                     if (dep.head == word.id
                             and dep.deprel in _DEP_NOUN_RELS
                             and dep.upos in ("ADJ", "NOUN")):
+                        # Skip demonym/nationality ADJ (capitalized, not in freq list)
+                        if (dep.upos == "ADJ"
+                                and dep.text[0:1].isupper()
+                                and dep.lemma.lower() not in freq):
+                            continue
                         parts = sorted([dep, word], key=lambda w: w.id)
                         candidates.append(_make_phrase(parts, "noun_phrase", "dep", freq))
 
@@ -399,9 +404,17 @@ def extract_phrases(doc, lang: str, freq: dict[str, int], level: str = "A0") -> 
 def _make_phrase(parts: list, ptype: str, source: str, freq: dict[str, int] | None = None) -> dict:
     """Build a phrase candidate dict from a list of Stanza words."""
     components = [_clean_lemma(p.lemma, freq).lower() for p in parts]
+    # Display text: use surface form for ADJ (inflected form is more natural,
+    # e.g. "digitale munt" not "digitaal munt"), lemma for others.
+    display = []
+    for p in parts:
+        if p.upos == "ADJ":
+            display.append(p.text.lower())
+        else:
+            display.append(_clean_lemma(p.lemma, freq).lower())
     return {
         "surface": " ".join(p.text for p in parts),
-        "text": " ".join(components),
+        "text": " ".join(display),
         "type": ptype,
         "source": source,
         "_components": components,
@@ -409,7 +422,7 @@ def _make_phrase(parts: list, ptype: str, source: str, freq: dict[str, int] | No
     }
 
 
-def extract(doc, lang: str, freq: dict[str, int], level: str = "A0") -> dict:
+def extract(doc, lang: str, freq: dict[str, int], level: str = "A0", join_separable: bool = False) -> dict:
     """Extract and rank vocabulary candidates from a Stanza doc.
 
     Pipeline:
@@ -509,6 +522,33 @@ def extract(doc, lang: str, freq: dict[str, int], level: str = "A0") -> dict:
                         if w.id != head.id:
                             _skip.add(w.id)
 
+        # Merge compound NOUNs: Stanza splits Dutch compounds like
+        # "blockchaintechnologie" → "blockchain"(compound→technologie) + "technologie".
+        # Rejoin when the joined form (with optional connector) exists in freq list.
+        for word in sent.words:
+            if (word.upos == "NOUN" and word.deprel == "compound"
+                    and word.head > 0 and word.id not in _skip):
+                head = words_by_id.get(word.head)
+                if head and head.upos == "NOUN" and head.id not in _skip:
+                    a = word.text.lower()
+                    b = head.text.lower()
+                    best, best_rank = None, float("inf")
+                    for conn in _NL_CONNECTORS:
+                        compound = a + conn + b
+                        rank = freq.get(compound)
+                        if rank is not None and rank < best_rank:
+                            best, best_rank = compound, rank
+                    if best is not None:
+                        merged_fragments.append({
+                            "parts": [word.text, head.text],
+                            "merged": best,
+                            "rule": "compound_noun",
+                        })
+                        head.text = best
+                        head.lemma = best
+                        _skip.add(word.id)
+
+        for word in sent.words:
             # "95p" pattern: single-char NOUN with a NUM child via nummod → skip it
             # The NUM already goes to the numbers list; the suffix is not vocabulary.
             if len(word.text) == 1 and word.upos == "NOUN":
@@ -550,7 +590,13 @@ def extract(doc, lang: str, freq: dict[str, int], level: str = "A0") -> dict:
             candidates = [c for c in candidates if c.get("_verb_id") not in sep_verb_ids]
             candidates.extend(sep_verbs)
 
-    # --- Step 2: Clean compound lemmas ---
+    # --- Step 2a: Join separable verbs if requested (benchmark mode) ---
+    if join_separable:
+        for item in candidates:
+            if "|" in item["text"]:
+                item["text"] = item["text"].replace("|", "")
+
+    # --- Step 2b: Clean compound lemmas ---
     # Stanza splits Dutch compounds with underscores; try to rejoin them
     for item in candidates:
         item["text"] = _clean_lemma(item["text"], freq)
@@ -582,6 +628,11 @@ def extract(doc, lang: str, freq: dict[str, int], level: str = "A0") -> dict:
     # Numeric tokens (e.g. "2026.", "26.", "1.") — not vocabulary
     candidates = [item for item in candidates if not re.match(r"^\d+\.?$", item["text"])]
 
+    # Hyphenated jargon not in freq list (e.g. "non-dom", "e-mail" when not in list).
+    # Separable verbs use "|" not "-", so this won't affect them.
+    candidates = [item for item in candidates
+                  if not ("-" in item["text"] and item["text"].lower() not in freq)]
+
     # Probable proper nouns mis-tagged as NOUN/ADJ by Stanza.
     # If the surface form is capitalized mid-sentence and the lemma isn't in
     # the frequency list, it's almost certainly a name (e.g. "zelenski", "iPhona").
@@ -593,12 +644,20 @@ def extract(doc, lang: str, freq: dict[str, int], level: str = "A0") -> dict:
                               and item["text"].lower() not in freq)]
 
     # --- Step 5: Deduplicate ---
+    # Pre-seed seen set with joined forms of separable verbs so standalone
+    # duplicates like "plaatsvinden" are suppressed when "plaats|vinden" exists.
     seen = set()
+    for item in candidates:
+        if "|" in item["text"]:
+            seen.add(item["text"].replace("|", "").lower())
     unique = []
     for item in candidates:
         key = item["text"].lower()
         if key not in seen:
             seen.add(key)
+            unique.append(item)
+        elif "|" in item["text"]:
+            # Always keep the separable verb itself
             unique.append(item)
 
     # --- Step 6: Rank and score ---
