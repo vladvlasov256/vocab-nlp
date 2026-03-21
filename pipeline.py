@@ -1,6 +1,7 @@
 """Core NLP pipeline — shared by app.py (Modal) and cli.py (local)."""
 
 import csv
+import json
 import logging
 import re
 from pathlib import Path
@@ -105,6 +106,28 @@ def load_freq_en() -> dict[str, int]:
 
 
 FREQ_LOADERS = {"nl": load_freq_nl, "sr": load_freq_sr, "en": load_freq_en}
+
+
+def _load_collocations(lang: str) -> set[str]:
+    """Load collocation whitelist for a language. Returns set of 'word1 word2' bigrams."""
+    path = DATA_DIR / f"collocations_{lang}.json"
+    if not path.exists():
+        return set()
+    data = json.loads(path.read_text())
+    bigrams = set()
+    for items in data.values():
+        for item in items:
+            bigrams.add(item["bigram"])
+    return bigrams
+
+
+_COLLOCATIONS: dict[str, set[str]] = {}
+
+
+def get_collocations(lang: str) -> set[str]:
+    if lang not in _COLLOCATIONS:
+        _COLLOCATIONS[lang] = _load_collocations(lang)
+    return _COLLOCATIONS[lang]
 
 
 def load_lemma_overrides(lang: str) -> dict[tuple[str, str], str]:
@@ -331,22 +354,25 @@ def extract_phrases(doc, lang: str, freq: dict[str, int], level: str = "A0") -> 
     unique = [c for c in unique if all(freq.get(comp) is not None for comp in c["_components"])]
 
     # --- Score: max(component_weights) + adjustments ---
+    collocations = get_collocations(lang)
     scored = []
     for c in unique:
         weights = [rank_to_weight(freq.get(comp), lang, level) for comp in c["_components"]]
         if not any(w >= 1.0 for w in weights):
             continue  # at least one component must be in target band
-        # Skip phrases where any component is too generic for its POS.
-        # "hebben contract" (verb rank ~5) is noise; "voeren gesprek" (rank ~800) is real.
-        too_generic = False
-        lang_caps = _PHRASE_RANK_CAPS.get(lang, {})
-        for comp, pos in zip(c["_components"], c["_component_pos"]):
-            cap = lang_caps.get(pos)
-            if cap and freq.get(comp, float("inf")) <= cap:
-                too_generic = True
-                break
-        if too_generic:
-            continue
+        in_whitelist = c["text"] in collocations
+        # Skip phrases where any component is too generic for its POS,
+        # unless the phrase appears in the collocation whitelist.
+        if not in_whitelist:
+            too_generic = False
+            lang_caps = _PHRASE_RANK_CAPS.get(lang, {})
+            for comp, pos in zip(c["_components"], c["_component_pos"]):
+                cap = lang_caps.get(pos)
+                if cap and freq.get(comp, float("inf")) <= cap:
+                    too_generic = True
+                    break
+            if too_generic:
+                continue
         score = max(weights)
         if c["type"] == "verb_phrase":
             score += 0.05
