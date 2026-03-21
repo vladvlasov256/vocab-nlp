@@ -122,14 +122,14 @@ uv run --group bench python bench/run.py --lang en
 uv run --group bench python bench/run.py --text en_a2_03 -v  # single text, print judge prompt
 ```
 
-### Dutch (v5, with phrases) — Cohen's d = 0.20
+### Dutch (v5, with phrases) — Cohen's d = 0.47
 
 | Level | Pipeline avg | LLM avg | Delta |
 |-------|-------------|---------|-------|
-| A0 | 4.4 | 2.9 | +1.50 |
-| A1 | 3.9 | 3.8 | +0.10 |
-| A2 | 3.5 | 4.5 | -1.00 |
-| **Overall** | **3.9** | **3.7** | **+0.20** |
+| A0 | 4.5 | 2.9 | +1.60 |
+| A1 | 4.6 | 3.8 | +0.80 |
+| A2 | 3.8 | 4.4 | -0.60 |
+| **Overall** | **4.3** | **3.7** | **+0.60** |
 
 Serbian and English benchmarks not yet re-run with v5 phrases.
 
