@@ -691,17 +691,19 @@ def extract(doc, lang: str, freq: dict[str, int], level: str = "A0", join_separa
         rank_key = item.pop("_rank_key", item["text"].lower())
         rank = freq.get(rank_key)
         item["rank"] = rank
-        # Compound-aware scoring: if the compound has parts and is not itself
-        # in the freq list (or is beyond target), score by parts.
-        # e.g. "plaatsvinden" (rank 8028) → parts ("plaats", "vinden") both known-band → score as known.
-        # e.g. "blockchaintechnologie" (no rank) → parts ("blockchain", "technologie") → score by max part rank.
-        if parts and rank is not None:
+        # Compound-aware scoring: demote by parts only when the compound
+        # itself is beyond target. Target-band compounds like "hoofdpijn"
+        # (rank 3095) should keep their own score even if parts are common.
+        # e.g. "plaatsvinden" (rank 8028, beyond target) → parts both known-band → score as known.
+        # e.g. "hoofdpijn" (rank 3095, target-band) → keep score 1.0 despite common parts.
+        if parts and rank is not None and rank > band["target"]:
             part_ranks = [freq.get(p) for p in parts]
             if all(r is not None and r <= band["known"] for r in part_ranks):
-                # All parts are known-band → compound is effectively known too
                 weight = max(rank_to_weight(r, lang, level) for r in part_ranks)
             else:
                 weight = rank_to_weight(rank, lang, level)
+        elif parts and rank is not None:
+            weight = rank_to_weight(rank, lang, level)
         elif parts and rank is None:
             # Compound not in freq list — score by the least common part
             part_ranks = [freq.get(p) for p in parts]
