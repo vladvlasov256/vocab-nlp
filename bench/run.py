@@ -67,7 +67,7 @@ def discover_texts(lang: str | None = None, level: str | None = None, text_name:
             continue
         if level and t_level != level:
             continue
-        if text_name and name != text_name:
+        if text_name and name not in text_name:
             continue
 
         baseline_path = BASELINE_DIR / f"{name}.json"
@@ -131,7 +131,7 @@ def main():
     level_filter = args.level.upper() if args.level else None
     lang_filter = args.lang if args.lang else None
 
-    text_filter = args.text if args.text else None
+    text_filter = args.text.split(",") if args.text else None
     texts = discover_texts(lang=lang_filter, level=level_filter, text_name=text_filter)
     if not texts:
         print("No matching texts found.")
