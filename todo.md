@@ -27,4 +27,3 @@ Known-band words (rank < 1500) max out at 0.45 — still below the 0.5 API thres
 
 - [ ] Lower API threshold or raise gradient ceiling above 0.5 so top known-band words make the cut (design decision: changes output for all levels)
 - [ ] Build denser collocation whitelist (full 105M-line corpus on GPU) to use as a requirement instead of bypass
-- [ ] Explore context-aware scoring (word is "known" globally but relevant in this text)
