@@ -217,7 +217,7 @@ def rank_to_weight(rank: int | None, lang: str = "nl", level: str = "A0") -> flo
     return 0.6  # beyond target — still useful
 
 
-def extract_separable_verbs(sent) -> list[dict]:
+def extract_separable_verbs(sent, freq: dict[str, int]) -> list[dict]:
     """Dutch separable verb reconstruction from dependency parse.
 
     Dutch has separable verbs where the particle splits from the verb:
@@ -242,10 +242,15 @@ def extract_separable_verbs(sent) -> list[dict]:
         verb = verbs.get(particle.head)
         if verb:
             reconstructed = particle.text.lower() + "|" + verb.lemma
+            # Rank by the full separable verb if it exists in the freq list,
+            # otherwise fall back to base verb. "meespelen" (rank 8394) is a
+            # different word from "spelen" (rank 400).
+            joined = particle.text.lower() + verb.lemma.lower()
+            rank_key = joined if freq.get(joined) is not None else verb.lemma.lower()
             results.append({
                 "text": reconstructed,
                 "pos": "VERB",
-                "_rank_key": verb.lemma.lower(),
+                "_rank_key": rank_key,
             })
             replaced_verb_ids.add(verb.id)
     return results, replaced_verb_ids
@@ -535,7 +540,7 @@ def extract(doc, lang: str, freq: dict[str, int], level: str = "A0") -> dict:
 
         # Separable verbs: "belt...op" → "op|bellen" (Dutch, German)
         if LANG_PRESETS[lang].get("separable_verbs", False):
-            sep_verbs, sep_verb_ids = extract_separable_verbs(sent)
+            sep_verbs, sep_verb_ids = extract_separable_verbs(sent, freq)
             candidates = [c for c in candidates if c.get("_verb_id") not in sep_verb_ids]
             candidates.extend(sep_verbs)
 
