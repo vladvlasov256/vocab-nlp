@@ -261,7 +261,7 @@ def extract_separable_verbs(sent, freq: dict[str, int]) -> list[dict]:
 _NL_CONNECTORS = ("", "s", "e", "en", "er")
 
 
-def _clean_lemma(text: str, freq: dict[str, int] | None = None) -> str:
+def _clean_lemma(text: str, freq: dict[str, int] | None = None) -> tuple[str, tuple[str, ...] | None]:
     """Fix Stanza's underscore-split compound lemmas.
 
     Stanza sometimes lemmatizes Dutch compounds with underscores:
@@ -272,6 +272,9 @@ def _clean_lemma(text: str, freq: dict[str, int] | None = None) -> str:
     against the frequency list. If a valid compound exists, use it.
     Otherwise fall through and just strip underscores (produces a space-separated
     form that will be filtered out later by the space filter).
+
+    Returns (cleaned_text, parts) where parts is a tuple of the original
+    underscore-split components, or None if no split occurred.
     """
     if "_" in text and freq is not None:
         parts = text.split("_")
@@ -284,9 +287,11 @@ def _clean_lemma(text: str, freq: dict[str, int] | None = None) -> str:
                 if rank is not None and rank < best_rank:
                     best, best_rank = compound, rank
             if best is not None:
-                return best
-        # More than 2 parts or no match — just strip underscores
-    return re.sub(r"[_]+", " ", text).strip()
+                return best, (a, b)
+            # Not in freq — return space-separated but keep parts for ranking
+            return f"{a} {b}", (a, b)
+        # More than 2 parts — just strip underscores
+    return re.sub(r"[_]+", " ", text).strip(), None
 
 
 # Per-language rank caps for phrase filtering. Words ranked below these
@@ -330,10 +335,9 @@ def extract_phrases(doc, lang: str, freq: dict[str, int], level: str = "A0") -> 
                     if (dep.head == word.id
                             and dep.deprel in _DEP_NOUN_RELS
                             and dep.upos in ("ADJ", "NOUN")):
-                        # Skip demonym/nationality ADJ (capitalized, not in freq list)
-                        if (dep.upos == "ADJ"
-                                and dep.text[0:1].isupper()
-                                and dep.lemma.lower() not in freq):
+                        # Skip demonym/nationality ADJ (always capitalized in Dutch,
+                        # e.g. "Ierse", "Nederlandse") — not useful phrase components.
+                        if dep.upos == "ADJ" and dep.text[0:1].isupper():
                             continue
                         parts = sorted([dep, word], key=lambda w: w.id)
                         candidates.append(_make_phrase(parts, "noun_phrase", "dep", freq))
@@ -403,7 +407,7 @@ def extract_phrases(doc, lang: str, freq: dict[str, int], level: str = "A0") -> 
 
 def _make_phrase(parts: list, ptype: str, source: str, freq: dict[str, int] | None = None) -> dict:
     """Build a phrase candidate dict from a list of Stanza words."""
-    components = [_clean_lemma(p.lemma, freq).lower() for p in parts]
+    components = [_clean_lemma(p.lemma, freq)[0].lower() for p in parts]
     # Display text: use surface form for ADJ (inflected form is more natural,
     # e.g. "digitale munt" not "digitaal munt"), lemma for others.
     display = []
@@ -411,7 +415,7 @@ def _make_phrase(parts: list, ptype: str, source: str, freq: dict[str, int] | No
         if p.upos == "ADJ":
             display.append(p.text.lower())
         else:
-            display.append(_clean_lemma(p.lemma, freq).lower())
+            display.append(_clean_lemma(p.lemma, freq)[0].lower())
     return {
         "surface": " ".join(p.text for p in parts),
         "text": " ".join(display),
@@ -597,19 +601,29 @@ def extract(doc, lang: str, freq: dict[str, int], level: str = "A0", join_separa
                 item["text"] = item["text"].replace("|", "")
 
     # --- Step 2b: Clean compound lemmas ---
-    # Stanza splits Dutch compounds with underscores; try to rejoin them
+    # Stanza splits Dutch compounds with underscores; try to rejoin them.
+    # Store parts tuple for compound-aware scoring.
     for item in candidates:
-        item["text"] = _clean_lemma(item["text"], freq)
+        cleaned, parts = _clean_lemma(item["text"], freq)
+        item["text"] = cleaned
+        if parts:
+            item["_parts"] = parts
 
     # --- Step 3: Surface form fallback ---
     # When Stanza's lemma isn't in the freq list but the original surface form is,
     # use the surface form. Catches cases where Stanza over-strips:
     # e.g. surface "verzekerd" with bad lemma "verzekerd_zijn" → use "verzekerd"
+    # Also: when _clean_lemma produced spaces but surface is a single word
+    # (e.g. lemma "blockchain technologie" but surface "blockchaintechnologie"),
+    # prefer the surface — it's the actual word the learner sees.
     for item in candidates:
         lemma = item["text"].lower()
         surface = item.get("_surface", "").lower()
-        if lemma != surface and lemma not in freq and surface in freq:
-            item["text"] = surface
+        if lemma != surface:
+            if " " in lemma and " " not in surface:
+                item["text"] = surface
+            elif lemma not in freq and surface in freq:
+                item["text"] = surface
 
     # --- Step 4: Filter noise ---
 
@@ -667,10 +681,31 @@ def extract(doc, lang: str, freq: dict[str, int], level: str = "A0", join_separa
         item.pop("_surface", None)
         item.pop("_sent_initial", None)
         item.pop("_verb_id", None)
+        parts = item.pop("_parts", None)
         rank_key = item.pop("_rank_key", item["text"].lower())
         rank = freq.get(rank_key)
         item["rank"] = rank
-        weight = rank_to_weight(rank, lang, level)
+        # Compound-aware scoring: if the compound has parts and is not itself
+        # in the freq list (or is beyond target), score by parts.
+        # e.g. "plaatsvinden" (rank 8028) → parts ("plaats", "vinden") both known-band → score as known.
+        # e.g. "blockchaintechnologie" (no rank) → parts ("blockchain", "technologie") → score by max part rank.
+        if parts and rank is not None:
+            part_ranks = [freq.get(p) for p in parts]
+            if all(r is not None and r <= band["known"] for r in part_ranks):
+                # All parts are known-band → compound is effectively known too
+                weight = max(rank_to_weight(r, lang, level) for r in part_ranks)
+            else:
+                weight = rank_to_weight(rank, lang, level)
+        elif parts and rank is None:
+            # Compound not in freq list — score by the least common part
+            part_ranks = [freq.get(p) for p in parts]
+            known_ranks = [r for r in part_ranks if r is not None]
+            if known_ranks:
+                weight = rank_to_weight(max(known_ranks), lang, level)
+            else:
+                weight = rank_to_weight(None, lang, level)
+        else:
+            weight = rank_to_weight(rank, lang, level)
         if item["pos"] == "ADV":
             weight *= level_settings.get("adv_weight", 1.0)
         item["weight"] = weight
