@@ -7,14 +7,14 @@ sdk: gradio
 
 Multilingual NLP microservice that extracts vocabulary candidates from short texts. Built for language learning apps targeting A0-B1 learners.
 
-> Deterministic, fast, and cheaper than pure LLM extraction. Matches LLM vocab picking quality (Cohen's d ≈ 0.1–0.2) while winning at A1/A2 levels.
+> Deterministic, fast, and cheaper than pure LLM extraction. Extracts single words and multi-word phrases (ADJ+NOUN, VERB+NOUN collocations).
 
 ![CLI screenshot](docs/cli.png)
 
 ## Pipeline
 
 ```
-Input text → Trim → Stanza NLP → Heuristics → Ranked candidates
+Input text → Trim → Stanza NLP → Singles + Phrases → Ranked items
 ```
 
 ### Step 0: Trim
@@ -43,16 +43,23 @@ Collect NOUN, VERB, ADJ, ADV tokens, then apply heuristics. NUM and PROPN go to 
 
 **Proper noun separation** — PROPN tokens go to a separate list, not mixed with vocabulary candidates. A pre-pass collects all PROPN lemmas upfront; any candidate whose lemma matches a known proper noun is skipped at collection time (catches mis-tagged instances like sentence-initial "CAB" → NOUN). Additionally, Stanza sometimes mis-tags proper nouns as NOUN/ADJ mid-sentence — we catch these by checking if the surface form is capitalized and the lemma is absent from the frequency list (e.g. "zelenski", "iPhona").
 
-**CEFR frequency ranking** — Each lemma is scored by its rank in a corpus frequency list (SUBTLEX-NL for Dutch, srLex 1.3 for Serbian). Scoring is level-aware:
+**Phrase extraction** — Dependency-based extraction of multi-word collocations:
+- ADJ→NOUN (amod): "slim contract", "wetenschappelijk tijdschrift"
+- NOUN→NOUN (compound): "bloedvergiftiging"
+- VERB→NOUN (obj): "verdienen loon", "geven antwoord"
+
+Phrases are scored using `max(component_weights)` and compete on the same 0–1 scale as singles. A per-level cap limits phrase count (A2: max 2, others: max 3). Phrases above threshold swallow their component singles to avoid duplication. A collocation whitelist built from OpenSubtitles (NPMI-scored bigrams) provides positive signal for phrase quality.
+
+**CEFR frequency ranking** — Each lemma is scored by its rank in a corpus frequency list (SUBTLEX-NL for Dutch, srLex 1.3 for Serbian). Scoring is level-aware with a gradient within the known band:
 
 | Learner level | "Known" band | "Target" band | Effect |
 |---------------|-------------|---------------|--------|
-| A0 | top 0 | top 500 | Everything is new |
-| A1 | top 500 | top 1500 | Skip basics |
-| A2 | top 1500 | top 3000 | Skip common words |
-| B1 | top 3000 | top 6000 | Surface advanced vocab |
+| A0 | top 0 | top 1000 | Everything is new |
+| A1 | top 500 | top 3000 | Skip basics |
+| A2 | top 1500 | top 5000 | Skip common words |
+| B1 | top 3000 | top 8000 | Surface advanced vocab |
 
-Words in the target band score 1.0, known band scores 0.3, beyond/unknown score 0.6. Output is sorted by weight, filtered at 0.5, capped at 15 lemmas.
+Words in the target band score 1.0, beyond/unknown score 0.6. Known-band words score on a gradient (0.05–0.45) based on rank position — words near the target boundary score higher than very common words. Output is sorted by score, filtered at 0.5, capped at 15 items.
 
 ## API
 
@@ -70,11 +77,13 @@ curl -X POST https://<your-modal-url>/extract \
 ```json
 {
   "language": "nl",
-  "lemmas": [
-    {"text": "hervormen", "pos": "VERB", "weight": 1.0, "in_target": true},
-    {"text": "minister", "pos": "NOUN", "weight": 0.6, "in_target": false}
+  "items": [
+    {"text": "hervormen", "type": "single", "score": 1.0, "pos": "VERB", "rank": 4521, "in_target": true},
+    {"text": "sociaal zekerheid", "type": "noun_phrase", "score": 1.0, "surface": "sociale zekerheid"},
+    {"text": "minister", "type": "single", "score": 0.6, "pos": "NOUN", "rank": 8200, "in_target": false}
   ],
-  "proper_nouns": []
+  "proper_nouns": [],
+  "numbers": []
 }
 ```
 
@@ -100,7 +109,7 @@ uv run python cli.py
 - `Up/Down` — input history
 - `Ctrl+C` — quit
 
-Displays three panels: **Candidates** (above threshold), **Filtered out** (below threshold), and **Proper nouns**.
+Displays panels: **Candidates** (above threshold), **Filtered out** (below threshold), **Proper nouns**, **Numbers**, **Merged fragments**, and **Generic phrases** (phrases filtered by rank caps).
 
 ## Benchmark
 
@@ -113,43 +122,27 @@ uv run --group bench python bench/run.py --lang en
 uv run --group bench python bench/run.py --text en_a2_03 -v  # single text, print judge prompt
 ```
 
-### Dutch — Cohen's d = 0.19
+### Dutch (v5, with phrases) — Cohen's d = 0.20
 
 | Level | Pipeline avg | LLM avg | Delta |
 |-------|-------------|---------|-------|
-| A0 | 3.4 | 4.0 | -0.60 |
-| A1 | 4.1 | 3.3 | +0.80 |
-| A2 | 4.1 | 3.7 | +0.40 |
+| A0 | 4.4 | 2.9 | +1.50 |
+| A1 | 3.9 | 3.8 | +0.10 |
+| A2 | 3.5 | 4.5 | -1.00 |
 | **Overall** | **3.9** | **3.7** | **+0.20** |
 
-### Serbian — Cohen's d = 0.10
-
-| Level | Pipeline avg | LLM avg | Delta |
-|-------|-------------|---------|-------|
-| A0 | 3.8 | 4.2 | -0.40 |
-| A1 | 4.3 | 3.7 | +0.60 |
-| A2 | 4.1 | 4.0 | +0.10 |
-| **Overall** | **4.1** | **4.0** | **+0.10** |
-
-### English — Cohen's d = 0.10
-
-| Level | Pipeline avg | LLM avg | Delta |
-|-------|-------------|---------|-------|
-| A0 | 3.4 | 3.8 | -0.40 |
-| A1 | 4.2 | 3.7 | +0.50 |
-| A2 | 4.2 | 4.0 | +0.20 |
-| **Overall** | **3.9** | **3.8** | **+0.10** |
+Serbian and English benchmarks not yet re-run with v5 phrases.
 
 ### Known issues
 
+**A2 regression:** Known-band words (rank < 1500) max out at score 0.45 — below the 0.5 API threshold — so contextually valuable words like "stoppen", "wedstrijd", "trots" don't surface. The LLM baseline picks these. See `todo.md` for analysis and possible fixes.
+
 **Dutch:**
 - **"vroeger" lemmatized as "vroeg"** — Stanza and Wiktionary both treat "vroeger" as the comparative of "vroeg" (early), but in most contexts it's a separate word meaning "formerly." No clean fix without word-sense disambiguation.
-- **Common verbs filtered at A2** — verbs like "veranderen" (rank 626) fall in the A2 known band and get filtered, but a judge considers them useful. Narrowing the known band reintroduces noise.
 
 **Serbian:**
 - **Minor lemma typos** — Stanza occasionally produces slightly misspelled lemmas (e.g. "dizajan", "svetki"). These are rare and corrected by the downstream LLM during lesson generation.
 - **Ambiguous verb forms** — "uči" can lemmatize to "učiti" (learn) or "ući" (enter); Stanza picks based on context and sometimes gets it wrong.
-- **Compound proper nouns** — "Bliski istok" (Middle East) splits into separate words. Multi-word expression handling not yet implemented.
 
 > **Note:** The pipeline output is consumed by an LLM that generates lesson content. Minor lemma imperfections (typos, dialect forms) are corrected at that stage. The pipeline prioritizes picking the right words over perfect spelling.
 

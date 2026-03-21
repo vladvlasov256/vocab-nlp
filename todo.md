@@ -1,28 +1,30 @@
 # TODO
 
-## A2 benchmark regression (delta -1.50)
+## A2 benchmark gap (delta -1.00)
 
-### Root cause
+### Current state
 
-At A2, the known band is 0–1500. Most useful words (stoppen, verandering, herinnering, trots, wedstrijd, proberen) fall inside this band and score 0.30. Meanwhile mediocre phrases like "begrijpen verandering" or "steunen tijdens" score 1.00 because one component is in the target band — and they take up top slots.
+After three rounds of fixes, A2 improved from -1.50 to -1.00 but still loses to LLM baseline.
 
-The LLM baseline picks words that are technically "known" at A2 but still worth teaching in context. Our pipeline buries them.
+Benchmark results (Dutch):
+- A0: +1.50 (pipeline wins)
+- A1: +0.10 (tie)
+- A2: -1.00 (LLM wins)
+- Overall: +0.20
 
-### Two problems
+### What was fixed
 
-1. **Phrases are too greedy.** Adjacent words that aren't real collocations ("voetbal verslaan", "verslaan voor", "steunen tijdens") get extracted and score high. Dep-parse and bigram extraction both produce these. The collocation whitelist doesn't help because it's too sparse (750K lines / 4M tokens).
+- [x] Gradient within known band (0.05–0.45 instead of flat 0.30)
+- [x] Dropped bigram fallback — only dep-based extraction (amod, compound, obj)
+- [x] Per-level phrase cap (A2: max 2 phrases, others: max 3)
+- [x] Collocation whitelist from OpenSubtitles (9K bigrams, bypasses rank caps)
 
-2. **Known-band words score too low.** At A2, rank 349 (stoppen) and rank 718 (trots) both get 0.30 — same as rank 23 (hebben). There's no gradient within the known band, so contextually valuable words can't compete with phrases.
+### Remaining A2 issue
 
-### Observed in nl_a2_06
+Known-band words (rank < 1500) max out at 0.45 — still below the 0.5 API threshold, so they never surface. The LLM baseline picks these words ("stoppen", "wedstrijd", "trots") because they're contextually valuable even if technically "known."
 
-- Pipeline top items: zomer, wisselen, carrière, begrijpen verandering, mooi herinnering, voetbal verslaan, verslaan voor, steunen tijdens
-- LLM baseline: werken, stoppen, verandering, plaats overnemen, begrijpen, herinnering, tijd, verslaan, trots, wedstrijd, proberen, carrière
-- Pipeline misses: stoppen, verandering, herinnering, trots, wedstrijd, proberen (all score 0.30)
+### Possible next steps
 
-### Possible fixes
-
-- [ ] Add gradient within known band (e.g. rank 1000 scores higher than rank 50)
-- [ ] Raise phrase quality bar (require whitelist match, or tighter dep relations)
-- [ ] Cap number of phrases in final output
-- [ ] Review whether phrase swallowing is too aggressive at A2
+- [ ] Lower API threshold or raise gradient ceiling above 0.5 so top known-band words make the cut (design decision: changes output for all levels)
+- [ ] Build denser collocation whitelist (full 105M-line corpus on GPU) to use as a requirement instead of bypass
+- [ ] Explore context-aware scoring (word is "known" globally but relevant in this text)
