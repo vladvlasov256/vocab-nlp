@@ -19,10 +19,10 @@ LANG_PRESETS = {
         "filter_propn_by_surface": True,
         "separable_verbs": True,
         "levels": {
-            "A0": {"band": {"known": 0,     "target": 1000},  "adv_weight": 0.7},
-            "A1": {"band": {"known": 500,   "target": 3000},  "adv_weight": 0.7},
-            "A2": {"band": {"known": 1500,  "target": 5000},  "adv_weight": 1.0},
-            "B1": {"band": {"known": 3000,  "target": 8000},  "adv_weight": 1.0},
+            "A0": {"band": {"known": 0,     "target": 1000},  "adv_weight": 0.7, "max_phrases": 3},
+            "A1": {"band": {"known": 500,   "target": 3000},  "adv_weight": 0.7, "max_phrases": 3},
+            "A2": {"band": {"known": 1500,  "target": 5000},  "adv_weight": 1.0, "max_phrases": 2},
+            "B1": {"band": {"known": 3000,  "target": 8000},  "adv_weight": 1.0, "max_phrases": 3},
         },
     },
     "sr": {
@@ -30,10 +30,10 @@ LANG_PRESETS = {
         "filter_propn_by_surface": True,
         "separable_verbs": False,
         "levels": {
-            "A0": {"band": {"known": 0,     "target": 1500},  "adv_weight": 0.7},
-            "A1": {"band": {"known": 200,   "target": 3000},  "adv_weight": 0.7},
-            "A2": {"band": {"known": 500,   "target": 5000},  "adv_weight": 1.0},
-            "B1": {"band": {"known": 2000,  "target": 8000},  "adv_weight": 1.0},
+            "A0": {"band": {"known": 0,     "target": 1500},  "adv_weight": 0.7, "max_phrases": 3},
+            "A1": {"band": {"known": 200,   "target": 3000},  "adv_weight": 0.7, "max_phrases": 3},
+            "A2": {"band": {"known": 500,   "target": 5000},  "adv_weight": 1.0, "max_phrases": 2},
+            "B1": {"band": {"known": 2000,  "target": 8000},  "adv_weight": 1.0, "max_phrases": 3},
         },
     },
     "en": {
@@ -41,10 +41,10 @@ LANG_PRESETS = {
         "filter_propn_by_surface": True,
         "separable_verbs": False,
         "levels": {
-            "A0": {"band": {"known": 0,     "target": 1000},  "adv_weight": 0.7},
-            "A1": {"band": {"known": 300,   "target": 3000},  "adv_weight": 0.7},
-            "A2": {"band": {"known": 800,   "target": 5000},  "adv_weight": 1.0},
-            "B1": {"band": {"known": 1500,  "target": 8000},  "adv_weight": 1.0},
+            "A0": {"band": {"known": 0,     "target": 1000},  "adv_weight": 0.7, "max_phrases": 3},
+            "A1": {"band": {"known": 300,   "target": 3000},  "adv_weight": 0.7, "max_phrases": 3},
+            "A2": {"band": {"known": 800,   "target": 5000},  "adv_weight": 1.0, "max_phrases": 2},
+            "B1": {"band": {"known": 1500,  "target": 8000},  "adv_weight": 1.0, "max_phrases": 3},
         },
     },
 }
@@ -195,11 +195,12 @@ def rank_to_weight(rank: int | None, lang: str = "nl", level: str = "A0") -> flo
     """Score a word by frequency rank relative to learner level.
 
     Returns:
-        0.3 — word is in "known" band (too easy, learner already knows it)
-        1.0 — word is in "target" band (sweet spot, should learn next)
-        0.6 — word is beyond target or not in freq list (still useful but less relevant)
+        0.05–0.45 — word is in "known" band (gradient: common words score lower,
+                     words near the target boundary score higher)
+        1.0       — word is in "target" band (sweet spot, should learn next)
+        0.6       — word is beyond target or not in freq list
 
-    The 0.5 threshold in the API filters out known-band words (0.3),
+    The 0.5 threshold in the API filters out known-band words,
     keeping target (1.0) and beyond/unknown (0.6).
     """
     band = LANG_PRESETS[lang]["levels"][level]["band"]
@@ -207,7 +208,10 @@ def rank_to_weight(rank: int | None, lang: str = "nl", level: str = "A0") -> flo
     if rank is None:
         return 0.6  # not in freq list — potentially interesting domain vocab
     if rank <= band["known"]:
-        return 0.3  # already known at this level
+        if band["known"] == 0:
+            return 0.05
+        # Linear gradient: rank 1 → 0.05, rank == known → 0.45
+        return 0.05 + 0.40 * (rank / band["known"])
     if rank <= band["target"]:
         return 1.0  # target zone — learn these
     return 0.6  # beyond target — still useful
@@ -304,10 +308,9 @@ _DEP_VERB_RELS = {"obj"}
 def extract_phrases(doc, lang: str, freq: dict[str, int], level: str = "A0") -> list[dict]:
     """Extract multi-word phrase candidates from dependency parse and POS bigrams.
 
-    Two extraction methods run in parallel:
-    1. Dependency-based: ADJ→NOUN (amod), NOUN→NOUN (compound/nmod),
-       VERB→NOUN (obj/obl/iobj), VERB→ADP (obl/case)
-    2. Linear bigram fallback: adjacent tokens matching POS patterns
+    Dependency-based extraction only:
+    - ADJ→NOUN (amod), NOUN→NOUN (compound)
+    - VERB→NOUN (obj)
 
     Scoring uses max(component_weights) so phrases compete on the same
     0-1 scale as single-word candidates.
@@ -329,17 +332,9 @@ def extract_phrases(doc, lang: str, freq: dict[str, int], level: str = "A0") -> 
                 for dep in sent.words:
                     if (dep.head == word.id
                             and dep.deprel in _DEP_VERB_RELS
-                            and dep.upos in ("NOUN", "ADP")):
+                            and dep.upos == "NOUN"):
                         parts = sorted([word, dep], key=lambda w: w.id)
                         candidates.append(_make_phrase(parts, "verb_phrase", "dep", freq))
-
-        # --- Linear bigram fallback ---
-        words = sent.words
-        for i in range(len(words) - 1):
-            pair = (words[i].upos, words[i + 1].upos)
-            ptype = _PHRASE_BIGRAMS.get(pair)
-            if ptype:
-                candidates.append(_make_phrase([words[i], words[i + 1]], ptype, "ngram", freq))
 
     # --- Deduplicate by lemma-normalized text ---
     seen = set()
@@ -620,12 +615,19 @@ def extract(doc, lang: str, freq: dict[str, int], level: str = "A0") -> dict:
     # Only phrases above threshold swallow their component singles.
     # Rejected phrases must not eat singles — the single is the fallback.
     _THRESHOLD = 0.5
-    phrase_components = set()
+    max_phrases = level_settings.get("max_phrases", 3)
     for p in phrases:
-        components = p.pop("_components")
         p.pop("_component_pos", None)
-        if p["score"] > _THRESHOLD:
-            phrase_components.update(components)
+
+    # Select top phrases up to the cap
+    accepted_phrases = [p for p in phrases if p["score"] > _THRESHOLD][:max_phrases]
+
+    # Only swallow components of accepted phrases
+    phrase_components = set()
+    for p in accepted_phrases:
+        phrase_components.update(p.pop("_components"))
+    for p in phrases:
+        p.pop("_components", None)
 
     items = []
     for item in unique:
@@ -640,9 +642,8 @@ def extract(doc, lang: str, freq: dict[str, int], level: str = "A0") -> dict:
             "rank": item["rank"],
             "in_target": item["in_target"],
         })
-    for p in phrases:
-        if p["score"] > _THRESHOLD:
-            items.append(p)
+    for p in accepted_phrases:
+        items.append(p)
 
     items.sort(key=lambda x: x["score"], reverse=True)
 
