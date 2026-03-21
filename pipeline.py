@@ -657,7 +657,11 @@ def extract(doc, lang: str, freq: dict[str, int], level: str = "A0", join_separa
                               and not item.get("_sent_initial", False)
                               and item["text"].lower() not in freq)]
 
-    # --- Step 5: Deduplicate ---
+    # --- Step 5: Count occurrences + Deduplicate ---
+    # Count how many times each lemma appears (before dedup) for repetition boost.
+    from collections import Counter
+    _lemma_counts = Counter(item["text"].lower() for item in candidates)
+
     # Pre-seed seen set with joined forms of separable verbs so standalone
     # duplicates like "plaatsvinden" are suppressed when "plaats|vinden" exists.
     seen = set()
@@ -669,9 +673,11 @@ def extract(doc, lang: str, freq: dict[str, int], level: str = "A0", join_separa
         key = item["text"].lower()
         if key not in seen:
             seen.add(key)
+            item["_count"] = _lemma_counts[key]
             unique.append(item)
         elif "|" in item["text"]:
             # Always keep the separable verb itself
+            item["_count"] = 1
             unique.append(item)
 
     # --- Step 6: Rank and score ---
@@ -708,6 +714,13 @@ def extract(doc, lang: str, freq: dict[str, int], level: str = "A0", join_separa
             weight = rank_to_weight(rank, lang, level)
         if item["pos"] == "ADV":
             weight *= level_settings.get("adv_weight", 1.0)
+        # Repetition boost: multiply weight by occurrence count.
+        # The known-band gradient (0.05–0.45) naturally limits this —
+        # very common words (rank 48 → 0.05) stay low even at 3x,
+        # while near-boundary words (rank 1014 → 0.32) cross 0.5 at 2x.
+        count = item.pop("_count", 1)
+        if count > 1:
+            weight = min(weight * count, 1.0)
         item["weight"] = weight
         item["in_target"] = rank is not None and band["known"] < rank <= band["target"]
 
