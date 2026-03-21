@@ -356,6 +356,7 @@ def extract_phrases(doc, lang: str, freq: dict[str, int], level: str = "A0") -> 
     # --- Score: max(component_weights) + adjustments ---
     collocations = get_collocations(lang)
     scored = []
+    too_generic_phrases = []
     for c in unique:
         weights = [rank_to_weight(freq.get(comp), lang, level) for comp in c["_components"]]
         if not any(w >= 1.0 for w in weights):
@@ -372,6 +373,9 @@ def extract_phrases(doc, lang: str, freq: dict[str, int], level: str = "A0") -> 
                     too_generic = True
                     break
             if too_generic:
+                score = max(weights)
+                c["score"] = min(score, 1.0)
+                too_generic_phrases.append(c)
                 continue
         score = max(weights)
         if c["type"] == "verb_phrase":
@@ -382,7 +386,8 @@ def extract_phrases(doc, lang: str, freq: dict[str, int], level: str = "A0") -> 
         scored.append(c)
 
     scored.sort(key=lambda c: c["score"], reverse=True)
-    return scored[:20]
+    too_generic_phrases.sort(key=lambda c: c["score"], reverse=True)
+    return scored[:20], too_generic_phrases
 
 
 def _make_phrase(parts: list, ptype: str, source: str, freq: dict[str, int] | None = None) -> dict:
@@ -609,7 +614,7 @@ def extract(doc, lang: str, freq: dict[str, int], level: str = "A0") -> dict:
     unique.sort(key=lambda x: x["weight"], reverse=True)
 
     # --- Step 7: Phrase extraction ---
-    phrases = extract_phrases(doc, lang, freq, level)
+    phrases, too_generic_phrases = extract_phrases(doc, lang, freq, level)
 
     # --- Step 8: Merge into unified items list ---
     # Only phrases above threshold swallow their component singles.
@@ -658,4 +663,8 @@ def extract(doc, lang: str, freq: dict[str, int], level: str = "A0") -> dict:
             seen_num.add(item["text"])
             unique_num.append(item)
 
-    return {"language": lang, "items": items, "proper_nouns": unique_propn, "numbers": unique_num, "merged_fragments": merged_fragments}
+    for p in too_generic_phrases:
+        p.pop("_components", None)
+        p.pop("_component_pos", None)
+
+    return {"language": lang, "items": items, "proper_nouns": unique_propn, "numbers": unique_num, "merged_fragments": merged_fragments, "generic_phrases": too_generic_phrases}

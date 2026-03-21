@@ -295,6 +295,18 @@ class VocabApp(App):
                 )
             panels.append(Panel(merge_table, title="Merged fragments", border_style="yellow"))
 
+        generic = result.get("generic_phrases", [])
+        if generic:
+            gen_table = Table(show_lines=False, pad_edge=False, expand=True)
+            gen_table.add_column("Phrase", style="bold")
+            gen_table.add_column("Type", style="yellow")
+            gen_table.add_column("Score", justify="right")
+            for item in generic:
+                s = item["score"]
+                score_style = "green" if s >= 0.9 else "yellow" if s >= 0.5 else "red"
+                gen_table.add_row(item["text"], item["type"], f"[{score_style}]{s:.2f}[/{score_style}]")
+            panels.append(Panel(gen_table, title="Generic phrases", border_style="dim red"))
+
         if not panels:
             log.write("[dim]No results[/dim]")
         else:
