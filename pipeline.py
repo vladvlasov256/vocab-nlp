@@ -359,9 +359,15 @@ def extract_phrases(doc, lang: str, freq: dict[str, int], level: str = "A0") -> 
     too_generic_phrases = []
     for c in unique:
         weights = [rank_to_weight(freq.get(comp), lang, level) for comp in c["_components"]]
-        if not any(w >= 1.0 for w in weights):
-            continue  # at least one component must be in target band
+        if not any(w >= 0.6 for w in weights):
+            continue  # at least one component must be in target or beyond band
         in_whitelist = c["text"] in collocations
+        # VERB+NOUN phrases must be in whitelist — dep obj is too noisy otherwise.
+        if c["type"] == "verb_phrase" and not in_whitelist:
+            score = max(weights)
+            c["score"] = min(score, 1.0)
+            too_generic_phrases.append(c)
+            continue
         # Skip phrases where any component is too generic for its POS,
         # unless the phrase appears in the collocation whitelist.
         if not in_whitelist:
