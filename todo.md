@@ -42,13 +42,16 @@ Only 2 misses are target-band words (terugbrengen, uitgeven) — and those ARE i
 - **non-dom**: proper noun / jargon leaking in
 - **digitaal munt**: wrong adjective form (should be "digitale munt")
 
-### TODO
+### TODO — from specific benchmark failures
 
-- [ ] **Separable verb display format** — replace pipe with joined form ("terugbrengen" not "terug|brengen"). Judge may not recognize pipe format, costing us points on words we actually have.
-- [ ] **Repetition-based boost for known-band words** — if a known-band word appears 2+ times in the text, it's a topic word. Boost its score above the threshold. Addresses 25/31 misses without lowering threshold globally.
-- [ ] **Dense collocation whitelist** — run full 105M-line corpus on GPU. Currently 1304 VERB+NOUN bigrams from 4M tokens is too sparse for the whitelist requirement to work.
-- [ ] **Compound word rejoining** — "blockchaintechnologie", "handelsplatform" are split by Stanza. Rejoin adjacent nouns when the joined form exists in freq list or dictionary. (Partially implemented for underscored compounds already.)
-- [ ] **ADJ surface form in phrases** — "digitaal munt" should be "digitale munt". Use surface form for adjectives in phrase display, keep lemma internally.
-- [ ] **Noise: plaatsvinden** — showing as separable verb (plaats|vinden) AND as standalone. Deduplicate.
-- [ ] **Noise: iers universiteit** — "Ierse" mislemmatized by Stanza. May need lemma override or demonym filter for phrase components.
-- [ ] **Noise: non-dom** — jargon/proper noun leaking through. Not in freq list but scores 0.6.
+- [ ] **Separable verb display format** — replace pipe with joined form ("terugbrengen" not "terug|brengen"). Judge says nl_a2_04 "misses terugbrengen/uitgeven" but we have them as terug|brengen, uit|geven.
+- [ ] **Compound word rejoining** — "blockchaintechnologie", "handelsplatform" split by Stanza. Rejoin adjacent nouns when joined form exists in freq list. (nl_a2_01, nl_a2_02)
+- [ ] **ADJ surface form in phrases** — "digitaal munt" should be "digitale munt". Use surface form for adjectives in phrase display. (nl_a2_01)
+- [ ] **Noise: plaatsvinden** — showing as separable verb (plaats|vinden) AND as standalone. Deduplicate. (nl_a2_05, nl_a2_06)
+- [ ] **Noise: iers universiteit** — "Ierse" mislemmatized by Stanza. May need lemma override or demonym filter for phrase components. (nl_a2_07)
+- [ ] **Noise: non-dom** — jargon/proper noun leaking through. Not in freq list but scores 0.6. (nl_a2_04)
+
+### TODO — speculative / structural
+
+- [ ] **Repetition-based boost for known-band words** — if a known-band word appears 2+ times in the text, boost its score. Would address the 25/31 known-band misses without lowering threshold. Not triggered by a specific fail.
+- [ ] **Dense collocation whitelist** — run full 105M-line corpus on GPU. Currently 1304 VERB+NOUN bigrams from 4M tokens — no specific fail yet from sparse whitelist but will matter as we add more phrase types.
