@@ -1,13 +1,13 @@
 # TODO
 
-## A2 benchmark gap (delta -0.60)
+## A2 benchmark gap (delta -0.50)
 
 ### Benchmark results (Dutch, Cohen's d = 0.47)
 
 - A0: +1.60
 - A1: +0.80
-- A2: -0.60
-- Overall: +0.60
+- A2: -0.50
+- Overall: +0.63
 
 ### What was fixed
 
@@ -19,39 +19,48 @@
 - [x] Separable verbs ranked by reconstructed form (meespelen=8394 not spelen=400)
 - [x] Relaxed phrase band filter (>= 0.6 instead of >= 1.0)
 - [x] VERB+NOUN requires whitelist match
+- [x] Separable verb display format — `join_separable` flag (joined for bench, pipe for API)
+- [x] Compound word rejoining — adjacent NOUN+NOUN via compound deprel, surface fallback for unsplit words
+- [x] ADJ surface form in phrases — "digitale munt" not "digitaal munt"
+- [x] Noise: plaatsvinden — compound-aware scoring demotes beyond-target compounds with known-band parts
+- [x] Noise: iers universiteit — demonym ADJ filter in phrase extraction (capitalized ADJ skipped)
+- [x] Noise: non-dom — hyphenated jargon filter (hyphenated tokens not in freq list dropped)
+- [x] Separable verb dedup — standalone suppressed when separable form exists
+- [x] Repetition boost — multiplicative: weight × count, near-boundary words cross 0.5 at 2+ occurrences
+- [x] Compound scoring bug — target-band compounds (hoofdpijn) no longer demoted by known-band parts
 
-### A2 miss analysis
+### Remaining A2 misses (66 total)
 
-**25 of 31 missed words are in the known band (rank < 1500, score < 0.45).** This is the dominant pattern. The LLM baseline picks these because they're contextually important even if technically "known" at A2.
+#### 1. Single known-band words (26 misses) — biggest gap
 
-Breakdown by rank range:
-- rank 200–500 (score 0.11–0.17): idee, begrijpen, werken, stoppen, gebruiken — very common, arguably too basic for A2
-- rank 500–1000 (score 0.19–0.28): veilig, belangrijk, lichaam, trots, lezen, informatie, schrijven, verkopen — mid-frequency, genuinely useful at A2
-- rank 1000–1500 (score 0.32–0.44): bedrijf, regelen, wedstrijd, regering, ervaring, gratis — near the boundary, most valuable
+Words the LLM picks because they're contextually important, but we filter as "too common." Almost all have 1 occurrence so repetition boost can't help.
 
-Only 2 misses are target-band words (terugbrengen, uitgeven) — and those ARE in our output as separable verbs (terug|brengen, uit|geven). The judge may not recognize the pipe format.
+**rank < 500** (13 words): zien, tijd, idee, begrijpen, werken, stoppen, proberen, kans, lopen, gebruiken, plek, veilig, belangrijk — arguably too basic for A2
 
-3 misses are compound words not in freq list (blockchaintechnologie, handelsplatform, handelsrobot) — domain-specific compounds Stanza splits into parts.
+**rank 500–1000** (7 words): lichaam, verliezen, trots, lezen, schrijven, verkopen ×2 — genuinely useful
 
-### Noise patterns
+**rank 1000–1500** (6 words): bedrijf ×2, regelen, wedstrijd, regering — near boundary, most valuable
 
-- **plaatsvinden** (rank 8028, score 0.60): false positive. "Plaats vinden" in text means "take place" but it's a separable verb already reconstructed. Showing as both separable verb AND standalone may be the issue.
-- **mooi herinnering**: dep amod phrase, real but not a useful collocation for learning
-- **iers universiteit**: "Ierse" mislemmatized, produces bad phrase
-- **peptid**: Stanza misspelling of "peptide"
-- **non-dom**: proper noun / jargon leaking in
-- **digitaal munt**: wrong adjective form (should be "digitale munt")
+#### 2. Target-band crowded out (6 misses)
 
-### TODO — from specific benchmark failures
+Score 1.0 but don't make top-15: netwerk, niveau, materiaal, tijdschrift, besluiten, verslaan
 
-- [ ] **Separable verb display format** — replace pipe with joined form ("terugbrengen" not "terug|brengen"). Judge says nl_a2_04 "misses terugbrengen/uitgeven" but we have them as terug|brengen, uit|geven.
-- [ ] **Compound word rejoining** — "blockchaintechnologie", "handelsplatform" split by Stanza. Rejoin adjacent nouns when joined form exists in freq list. (nl_a2_01, nl_a2_02)
-- [ ] **ADJ surface form in phrases** — "digitaal munt" should be "digitale munt". Use surface form for adjectives in phrase display. (nl_a2_01)
-- [ ] **Noise: plaatsvinden** — showing as separable verb (plaats|vinden) AND as standalone. Deduplicate. (nl_a2_05, nl_a2_06)
-- [ ] **Noise: iers universiteit** — "Ierse" mislemmatized by Stanza. May need lemma override or demonym filter for phrase components. (nl_a2_07)
-- [ ] **Noise: non-dom** — jargon/proper noun leaking through. Not in freq list but scores 0.6. (nl_a2_04)
+#### 3. Beyond/unknown singles (10 misses)
 
-### TODO — speculative / structural
+Domain words or inflected forms not in freq list: rijke, leiders, crypto-industrie, blockchain-netwerk, handelsrobot, investeren, symptoom, infectie, peptide, schoner
 
-- [ ] **Repetition-based boost for known-band words** — if a known-band word appears 2+ times in the text, boost its score. Would address the 25/31 known-band misses without lowering threshold. Not triggered by a specific fail.
+#### 4. Multi-word phrases (21 misses) — second biggest gap
+
+Collocations the LLM generates that our dep-parse doesn't extract:
+- VERB+particle: spelen mee, uitkijken naar, doorgaan naar, oplossen in
+- ADJ+NOUN: kunstmatige intelligentie, passief inkomen, geautomatiseerde handel, slim contract
+- VERB+NOUN: afspraak maken, toegankelijk maken, plaats overnemen, aandacht krijgen
+- Complex: medische hulp zoeken, op tijd hulp zoeken, winstgevend worden, gestorven zijn, snel herkennen, ogen hebben voor, platform groeien, aantrekkelijk worden, vechten om
+
+#### 5. Compounds Stanza splits (3 misses)
+
+hoofdpijn (×2), samenbrengen — `_clean_lemma` rejoins correctly, but were being demoted by compound scoring bug (now fixed)
+
+### TODO — structural
+
 - [ ] **Dense collocation whitelist** — run full 105M-line corpus on GPU. Currently 1304 VERB+NOUN bigrams from 4M tokens — no specific fail yet from sparse whitelist but will matter as we add more phrase types.
