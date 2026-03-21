@@ -1,57 +1,54 @@
 # TODO
 
-## A2 benchmark gap (delta -1.00)
+## A2 benchmark gap (delta -0.60)
 
-### Benchmark results (Dutch)
+### Benchmark results (Dutch, Cohen's d = 0.47)
 
-- A0: +1.50 (pipeline wins)
-- A1: +0.10 (tie)
-- A2: -1.00 (LLM wins)
-- Overall: +0.20
+- A0: +1.60
+- A1: +0.80
+- A2: -0.60
+- Overall: +0.60
 
 ### What was fixed
 
 - [x] Gradient within known band (0.05–0.45 instead of flat 0.30)
 - [x] Dropped bigram fallback — only dep-based extraction (amod, compound, obj)
 - [x] Per-level phrase cap (A2: max 2, others: max 3)
-- [x] Per-level threshold config (reverted to 0.5 for all — lowering didn't help)
-- [x] Collocation whitelist from OpenSubtitles (9K bigrams, bypasses rank caps)
+- [x] Per-level threshold config (all at 0.5 — lowering didn't help)
+- [x] Collocation whitelist from OpenSubtitles (9K bigrams)
+- [x] Separable verbs ranked by reconstructed form (meespelen=8394 not spelen=400)
+- [x] Relaxed phrase band filter (>= 0.6 instead of >= 1.0)
+- [x] VERB+NOUN requires whitelist match
 
-### Root cause analysis
+### A2 miss analysis
 
-#### 1. Separable verbs ranked by base verb instead of reconstructed form
+**25 of 31 missed words are in the known band (rank < 1500, score < 0.45).** This is the dominant pattern. The LLM baseline picks these because they're contextually important even if technically "known" at A2.
 
-"mee|spelen" is ranked by "spelen" (rank 400, known band, score 0.16) instead of "meespelen" (rank 8394, beyond target, score 0.6). Same for "uit|kijken" (kijken=127 → score 0.08, but uitkijken=4206 → score 1.0).
+Breakdown by rank range:
+- rank 200–500 (score 0.11–0.17): idee, begrijpen, werken, stoppen, gebruiken — very common, arguably too basic for A2
+- rank 500–1000 (score 0.19–0.28): veilig, belangrijk, lichaam, trots, lezen, informatie, schrijven, verkopen — mid-frequency, genuinely useful at A2
+- rank 1000–1500 (score 0.32–0.44): bedrijf, regelen, wedstrijd, regering, ervaring, gratis — near the boundary, most valuable
 
-The reconstructed form is a different word with a different meaning — "meespelen" (participate) vs "spelen" (play). Using the base verb rank is wrong.
+Only 2 misses are target-band words (terugbrengen, uitgeven) — and those ARE in our output as separable verbs (terug|brengen, uit|geven). The judge may not recognize the pipe format.
 
-**Fix:** In `extract_separable_verbs()`, try the reconstructed form in the freq list first. If found, use its rank. Fall back to base verb only if reconstructed form is missing.
+3 misses are compound words not in freq list (blockchaintechnologie, handelsplatform, handelsrobot) — domain-specific compounds Stanza splits into parts.
 
-**Affected texts:** nl_a2_05 (spelen mee, uitkijken naar), nl_a2_06 (plaats overnemen)
+### Noise patterns
 
-#### 2. Phrase filter kills beyond-target pairs
+- **plaatsvinden** (rank 8028, score 0.60): false positive. "Plaats vinden" in text means "take place" but it's a separable verb already reconstructed. Showing as both separable verb AND standalone may be the issue.
+- **mooi herinnering**: dep amod phrase, real but not a useful collocation for learning
+- **iers universiteit**: "Ierse" mislemmatized, produces bad phrase
+- **peptid**: Stanza misspelling of "peptide"
+- **non-dom**: proper noun / jargon leaking in
+- **digitaal munt**: wrong adjective form (should be "digitale munt")
 
-"kunstmatige intelligentie" — both components are beyond the target band (kunstmatig=9719, intelligentie=5488). The filter `if not any(w >= 1.0 for w in weights)` requires at least one component in the target band. Both score 0.6 so the phrase is dropped.
+### TODO
 
-**Fix:** Allow phrases where both components are beyond target — they score 0.6 which passes the 0.5 threshold anyway. Remove or relax the "at least one in target band" requirement.
-
-**Affected texts:** nl_a2_01 (kunstmatige intelligentie)
-
-#### 3. VERB+NOUN dep (obj) produces noise phrases
-
-"begrijpen verandering" — syntactically real (obj dep) but not a useful collocation. Both are common words that happen to be adjacent. The collocation whitelist is too sparse (4M tokens) to reliably filter these.
-
-**Fix options:**
-- Require VERB+NOUN phrases to match the collocation whitelist (needs denser whitelist from full corpus)
-- Drop VERB+NOUN dep extraction entirely and rely on singles
-- Tighter heuristic: reject when verb is in top N most common verbs
-
-**Affected texts:** nl_a2_06 (begrijpen verandering), nl_a2_01 (contract gebruiken)
-
-#### 4. Known-band singles below threshold
-
-bedrijf (1014), verliezen (647), regering (1228), regelen (1019), wedstrijd (1022), stoppen (349), proberen (353) — all in known band at A2, scoring 0.05–0.39. The LLM baseline picks these because they're contextually important even if "known."
-
-Lowering the threshold was tested and didn't improve benchmark scores — the judge penalizes noise more than it rewards coverage. This may not be fixable without context-aware scoring or a fundamentally different approach for A2.
-
-**Affected texts:** nl_a2_04 (bedrijf, verliezen, regering, regelen), nl_a2_06 (stoppen, proberen, wedstrijd)
+- [ ] **Separable verb display format** — replace pipe with joined form ("terugbrengen" not "terug|brengen"). Judge may not recognize pipe format, costing us points on words we actually have.
+- [ ] **Repetition-based boost for known-band words** — if a known-band word appears 2+ times in the text, it's a topic word. Boost its score above the threshold. Addresses 25/31 misses without lowering threshold globally.
+- [ ] **Dense collocation whitelist** — run full 105M-line corpus on GPU. Currently 1304 VERB+NOUN bigrams from 4M tokens is too sparse for the whitelist requirement to work.
+- [ ] **Compound word rejoining** — "blockchaintechnologie", "handelsplatform" are split by Stanza. Rejoin adjacent nouns when the joined form exists in freq list or dictionary. (Partially implemented for underscored compounds already.)
+- [ ] **ADJ surface form in phrases** — "digitaal munt" should be "digitale munt". Use surface form for adjectives in phrase display, keep lemma internally.
+- [ ] **Noise: plaatsvinden** — showing as separable verb (plaats|vinden) AND as standalone. Deduplicate.
+- [ ] **Noise: iers universiteit** — "Ierse" mislemmatized by Stanza. May need lemma override or demonym filter for phrase components.
+- [ ] **Noise: non-dom** — jargon/proper noun leaking through. Not in freq list but scores 0.6.
