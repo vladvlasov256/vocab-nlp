@@ -48,6 +48,12 @@ Step 2: Phrase extraction + CEFR ranking (YAKE, frequency lists)
 - `max_containers=1` — low traffic, single container is sufficient
 - CPU-only (`cpu=1`, `use_gpu=False`) — Stanza performs well on CPU for short texts; GPU containers are significantly more expensive on Modal
 
+## Benchmarks
+
+- Do NOT run benchmarks unless explicitly asked by the user.
+- Use `--text` to run a specific test: `uv run python bench/run.py --lang nl --text nl_a2_01`
+- Use `--level` to filter by level: `uv run python bench/run.py --lang nl --level A2`
+
 ## Consumer
 
 YourDutchBot — called during lesson generation, in parallel with MCQ generation.
