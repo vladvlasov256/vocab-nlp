@@ -28,8 +28,6 @@ for lang in LANGUAGES:
     _pipelines[lang] = create_stanza_pipeline(lang)
     _freqs[lang] = FREQ_LOADERS[lang]()
 
-_THRESHOLD = 0.5
-
 _DEFAULT_TEXT = "Anna lives in Amsterdam and works at a hospital. She earns 3500 euros per month. Last Wednesday she bought 12 tulips for her grandmother. The flowers were expensive but very beautiful."
 
 
@@ -42,7 +40,9 @@ def analyze(text: str, lang: str, level: str):
     doc = _pipelines[lang](text)
     result = extract(doc, lang, _freqs[lang], level=level)
 
-    bands = LANG_PRESETS[lang]["levels"][level]["band"]
+    level_settings = LANG_PRESETS[lang]["levels"][level]
+    bands = level_settings["band"]
+    threshold = level_settings.get("threshold", 0.5)
     all_items = result["items"]
 
     def _band(item):
@@ -55,8 +55,8 @@ def analyze(text: str, lang: str, level: str):
             return "target"
         return "beyond"
 
-    above = [item for item in all_items if item["score"] > _THRESHOLD][:MAX_LEMMAS]
-    below = [item for item in all_items if item["score"] <= _THRESHOLD]
+    above = [item for item in all_items if item["score"] > threshold][:MAX_LEMMAS]
+    below = [item for item in all_items if item["score"] <= threshold]
 
     candidates = [[i["text"], i.get("pos", i["type"]), i.get("rank") or "—", _band(i)] for i in above]
     filtered = [[i["text"], i.get("pos", i["type"]), i.get("rank") or "—", _band(i)] for i in below]

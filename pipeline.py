@@ -19,10 +19,10 @@ LANG_PRESETS = {
         "filter_propn_by_surface": True,
         "separable_verbs": True,
         "levels": {
-            "A0": {"band": {"known": 0,     "target": 1000},  "adv_weight": 0.7, "max_phrases": 3},
-            "A1": {"band": {"known": 500,   "target": 3000},  "adv_weight": 0.7, "max_phrases": 3},
-            "A2": {"band": {"known": 1500,  "target": 5000},  "adv_weight": 1.0, "max_phrases": 2},
-            "B1": {"band": {"known": 3000,  "target": 8000},  "adv_weight": 1.0, "max_phrases": 3},
+            "A0": {"band": {"known": 0,     "target": 1000},  "adv_weight": 0.7, "max_phrases": 3, "threshold": 0.5},
+            "A1": {"band": {"known": 500,   "target": 3000},  "adv_weight": 0.7, "max_phrases": 3, "threshold": 0.5},
+            "A2": {"band": {"known": 1500,  "target": 5000},  "adv_weight": 1.0, "max_phrases": 2, "threshold": 0.5},
+            "B1": {"band": {"known": 3000,  "target": 8000},  "adv_weight": 1.0, "max_phrases": 3, "threshold": 0.5},
         },
     },
     "sr": {
@@ -30,10 +30,10 @@ LANG_PRESETS = {
         "filter_propn_by_surface": True,
         "separable_verbs": False,
         "levels": {
-            "A0": {"band": {"known": 0,     "target": 1500},  "adv_weight": 0.7, "max_phrases": 3},
-            "A1": {"band": {"known": 200,   "target": 3000},  "adv_weight": 0.7, "max_phrases": 3},
-            "A2": {"band": {"known": 500,   "target": 5000},  "adv_weight": 1.0, "max_phrases": 2},
-            "B1": {"band": {"known": 2000,  "target": 8000},  "adv_weight": 1.0, "max_phrases": 3},
+            "A0": {"band": {"known": 0,     "target": 1500},  "adv_weight": 0.7, "max_phrases": 3, "threshold": 0.5},
+            "A1": {"band": {"known": 200,   "target": 3000},  "adv_weight": 0.7, "max_phrases": 3, "threshold": 0.5},
+            "A2": {"band": {"known": 500,   "target": 5000},  "adv_weight": 1.0, "max_phrases": 2, "threshold": 0.5},
+            "B1": {"band": {"known": 2000,  "target": 8000},  "adv_weight": 1.0, "max_phrases": 3, "threshold": 0.5},
         },
     },
     "en": {
@@ -41,10 +41,10 @@ LANG_PRESETS = {
         "filter_propn_by_surface": True,
         "separable_verbs": False,
         "levels": {
-            "A0": {"band": {"known": 0,     "target": 1000},  "adv_weight": 0.7, "max_phrases": 3},
-            "A1": {"band": {"known": 300,   "target": 3000},  "adv_weight": 0.7, "max_phrases": 3},
-            "A2": {"band": {"known": 800,   "target": 5000},  "adv_weight": 1.0, "max_phrases": 2},
-            "B1": {"band": {"known": 1500,  "target": 8000},  "adv_weight": 1.0, "max_phrases": 3},
+            "A0": {"band": {"known": 0,     "target": 1000},  "adv_weight": 0.7, "max_phrases": 3, "threshold": 0.5},
+            "A1": {"band": {"known": 300,   "target": 3000},  "adv_weight": 0.7, "max_phrases": 3, "threshold": 0.5},
+            "A2": {"band": {"known": 800,   "target": 5000},  "adv_weight": 1.0, "max_phrases": 2, "threshold": 0.5},
+            "B1": {"band": {"known": 1500,  "target": 8000},  "adv_weight": 1.0, "max_phrases": 3, "threshold": 0.5},
         },
     },
 }
@@ -614,7 +614,7 @@ def extract(doc, lang: str, freq: dict[str, int], level: str = "A0") -> dict:
     # --- Step 8: Merge into unified items list ---
     # Only phrases above threshold swallow their component singles.
     # Rejected phrases must not eat singles — the single is the fallback.
-    _THRESHOLD = 0.5
+    _THRESHOLD = level_settings.get("threshold", 0.5)
     max_phrases = level_settings.get("max_phrases", 3)
     for p in phrases:
         p.pop("_component_pos", None)
