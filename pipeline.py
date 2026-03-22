@@ -594,13 +594,7 @@ def extract(doc, lang: str, freq: dict[str, int], level: str = "A0", join_separa
             candidates = [c for c in candidates if c.get("_verb_id") not in sep_verb_ids]
             candidates.extend(sep_verbs)
 
-    # --- Step 2a: Join separable verbs if requested (benchmark mode) ---
-    if join_separable:
-        for item in candidates:
-            if "|" in item["text"]:
-                item["text"] = item["text"].replace("|", "")
-
-    # --- Step 2b: Clean compound lemmas ---
+    # --- Step 2: Clean compound lemmas ---
     # Stanza splits Dutch compounds with underscores; try to rejoin them.
     # Store parts tuple for compound-aware scoring.
     for item in candidates:
@@ -690,7 +684,14 @@ def extract(doc, lang: str, freq: dict[str, int], level: str = "A0", join_separa
             item["_count"] = 1
             unique.append(item)
 
-    # --- Step 6: Rank and score ---
+    # --- Step 6: Join separable verbs if requested (benchmark mode) ---
+    # Must happen AFTER dedup so pipe-based dedup logic works.
+    if join_separable:
+        for item in unique:
+            if "|" in item["text"]:
+                item["text"] = item["text"].replace("|", "")
+
+    # --- Step 7: Rank and score ---
     level_settings = LANG_PRESETS[lang]["levels"][level]
     band = level_settings["band"]
     for item in unique:
