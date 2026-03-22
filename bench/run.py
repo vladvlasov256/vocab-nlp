@@ -47,10 +47,16 @@ Score each list 1-5 on:
 - **Noise**: Are there false picks — trivial words, proper nouns, or unrecognizable words?
 
 Accept dialect variants as correct. Accept standard lemmatization even when the lemma form differs from the surface form in the text.
-
+{lang_hints}
 Respond with ONLY valid JSON, no markdown:
 {{"score_a": <int 1-5>, "score_b": <int 1-5>, "reasoning": "<1-2 sentences>"}}
 """
+
+LANG_HINTS = {
+    "nl": "Dutch and German have separable verbs where a particle splits from the verb in a sentence (e.g. \"Hij belt zijn moeder op\"). Treat the reconstructed infinitive form (\"opbellen\") as equivalent to the split form (\"bellen op\" / \"op bellen\"). Similarly, compound words like \"meespelen\" = \"spelen mee\", \"terugbrengen\" = \"brengen terug\".",
+    "sr": "",
+    "en": "",
+}
 
 
 def discover_texts(lang: str | None = None, level: str | None = None, text_name: str | None = None) -> list[dict]:
@@ -97,12 +103,16 @@ def run_pipeline(text: str, lang: str, level: str, nlp, freq) -> list[str]:
 def judge(client: OpenAI, text: str, lang: str, level: str, pipeline_lemmas: list[str], baseline_lemmas: list[str]) -> dict:
     """Ask judge LLM to score both lists."""
     language = LANG_PRESETS[lang]["name"]
+    lang_hints = LANG_HINTS.get(lang, "")
+    if lang_hints:
+        lang_hints = "\n" + lang_hints
     prompt = JUDGE_PROMPT.format(
         language=language,
         level=level,
         text=text,
         list_a=", ".join(pipeline_lemmas),
         list_b=", ".join(baseline_lemmas),
+        lang_hints=lang_hints,
     )
     logging.getLogger("bench").info(f"\n{'='*60}\nJUDGE PROMPT for {level} text:\n{'='*60}\n{prompt}\n{'='*60}")
     response = client.chat.completions.create(

@@ -28,6 +28,10 @@
 - [x] Separable verb dedup — standalone suppressed when separable form exists
 - [x] Repetition boost — multiplicative: weight × count, near-boundary words cross 0.5 at 2+ occurrences
 - [x] Compound scoring bug — target-band compounds (hoofdpijn) no longer demoted by known-band parts
+- [x] A2 phrase cap raised from 2 → 3 — matches other levels, unblocks "kunstmatige intelligentie"
+- [x] Hyphenated compounds — allow when both parts in freq and both above known band (crypto-industrie)
+- [x] Judge hint for separable verbs — Dutch-specific hint so judge equates "meespelen" = "spelen mee"
+- [x] peptide lemma — already correct via Wiktionary overrides (Stanza: "peptiden" → "peptide"), no fix needed
 
 ### Remaining A2 misses (66 total)
 
@@ -45,75 +49,47 @@ Words the LLM picks because they're contextually important, but we filter as "to
 
 #### 2. Target-band crowded out (6 misses)
 
-Score 1.0 but don't make top-15: netwerk, niveau, materiaal, tijdschrift, besluiten, verslaan
-
-**Fix: raise A2 phrase cap from 2 → 3.** Phrases take 1 slot but swallow 2 component singles. With cap=2, 2 phrases eat 4 singles → only 13 single slots remain. With cap=3, better phrases get through AND free up single slots since phrase components are deduplicated. Other levels already use cap=3.
+Score 1.0 but don't make top-15: netwerk, niveau, materiaal, tijdschrift, besluiten, verslaan. May improve with phrase cap raised to 3 (fewer singles eaten by phrase components).
 
 #### 3. Beyond/unknown singles (10 misses)
 
-Domain words or inflected forms not in freq list: rijke, leiders, crypto-industrie, blockchain-netwerk, handelsrobot, investeren, symptoom, infectie, peptide, schoner
-
-Analysis:
-- **rijke** → Stanza lemmatizes to "rijk" (rank 957, known-band). Filtered correctly.
-- **leiders** → Stanza lemmatizes to "leider" (rank 1471, known-band). Filtered correctly.
-- **crypto-industrie, blockchain-netwerk** → hyphenated compounds not in freq. Filtered by hyphenated jargon filter. Could add exception for compounds where both parts are in freq list.
-- **handelsrobot** → not in freq, Stanza doesn't split it. No path to recovery.
-- **investeren** (rank 7671), **symptoom** (5313), **infectie** (6551) → beyond target band, score 0.6. Present in output but may get crowded out of top-15.
-- **peptide** (rank 92192) → in output as "peptid" (Stanza misspelling). Lemma override would fix.
-- **schoner** (rank 159260) → comparative form, not useful as standalone vocab.
-
-**Fix: allow hyphenated compounds where both parts are in freq list.** Would recover crypto-industrie ("crypto" + "industrie" both in freq) and blockchain-netwerk.
+- **rijke** → "rijk" (rank 957, known-band). Filtered correctly.
+- **leiders** → "leider" (rank 1471, known-band). Filtered correctly.
+- **crypto-industrie** → now passes hyphenated filter (both parts in freq, both above known band).
+- **blockchain-netwerk** → "blockchain" not in freq list. Not recoverable.
+- **handelsrobot** → not in freq, Stanza doesn't split it. Not recoverable.
+- **investeren** (7671), **symptoom** (5313), **infectie** (6551) → beyond target, score 0.6. Present but may get crowded out.
+- **peptide** (92192) → correctly extracted, judge complaint was from stale run.
+- **schoner** (159260) → comparative form, not useful standalone.
 
 #### 4. Multi-word phrases (21 misses) — second biggest gap
 
-Collocations the LLM generates that our dep-parse doesn't extract.
-
 **Already extracted, different format (4):**
-- spelen mee → we output "meespelen" (separable verb reconstruction)
-- uitkijken naar → we output "uitkijken" (separable verb)
+- spelen mee → we output "meespelen" (separable verb). Judge hint added.
+- uitkijken naar → we output "uitkijken" (separable verb). Judge hint added.
 - doorgaan naar → we output "doorgaan" (known-band, score 0.39, filtered)
 - oplossen in → we output "oplossen" (single verb, ADP dropped)
 
-These aren't real misses — the judge should recognize them. Format difference only.
+**Extracted but blocked by phrase cap (3):**
+- kunstmatige intelligentie → should now pass with cap raised to 3
+- passief inkomen, geautomatiseerde handel → ADJ+NOUN amod, extractable but may be capped
 
-**Extracted by dep-parse but blocked by phrase cap (3):**
-- kunstmatige intelligentie → ADJ+NOUN amod, extracted but capped at 2 phrases in nl_a2_01 (beaten by "digitale munt" + "slimme contract")
-- passief inkomen → ADJ+NOUN amod, would need to be extracted
-- geautomatiseerde handel → ADJ+NOUN amod, would need to be extracted
-
-**Fix: raise A2 phrase cap to 3** (same as fix for category 2).
-
-**VERB+NOUN dep-obj, blocked by whitelist (3):**
-- afspraak maken → VERB+NOUN obj, not in collocation whitelist
-- toegankelijk maken → ADJ+VERB, not a pattern we extract
-- aandacht krijgen → NOUN+VERB, reversed word order
-
-**Fix: expand collocation whitelist** (dense corpus run) or relax whitelist requirement for high-scoring pairs.
+**VERB+NOUN blocked by whitelist (3):**
+- afspraak maken, toegankelijk maken, aandacht krijgen → not in collocation whitelist
 
 **Complex phrases beyond current extraction (11):**
+- medische hulp zoeken, op tijd hulp zoeken (3+ words)
+- winstgevend worden, aantrekkelijk worden, gestorven zijn (ADJ/participle + copula)
+- snel herkennen (ADV+VERB), vechten om (VERB+ADP too generic)
+- ogen hebben voor (idiom), platform groeien (not a real collocation)
 - slim contract → already extracted as "slimme contract" (surface form differs from baseline)
-- plaats overnemen → idiomatic, not standard dep pattern
-- medische hulp zoeken → 3-word phrase, beyond bigram extraction
-- op tijd hulp zoeken → 4-word phrase
-- winstgevend worden → ADJ+VERB copula, not extracted
-- gestorven zijn → participle+AUX, not extracted
-- snel herkennen → ADV+VERB, not extracted
-- ogen hebben voor → idiom
-- platform groeien → not a real collocation
-- aantrekkelijk worden → ADJ+VERB copula, not extracted
-- vechten om → VERB+ADP, extracted pattern but "om" is too generic
+- plaats overnemen → idiomatic
 
-**Not fixable** without fundamentally different extraction (e.g. LLM-based phrase selection). These require understanding meaning, not just syntax.
+**Not fixable** without LLM-based phrase selection or significantly expanding extraction patterns.
 
-#### 5. Compounds Stanza splits (3 misses)
+#### 5. Compounds Stanza splits (3 misses) — fixed
 
-hoofdpijn (×2), samenbrengen — `_clean_lemma` rejoins correctly. Were being demoted by compound scoring bug (now fixed).
-
-### TODO — actionable
-
-- [ ] **Raise A2 phrase cap from 2 → 3** — unblocks "kunstmatige intelligentie" and frees top-15 slots. Low risk, other levels already use 3.
-- [ ] **Allow hyphenated compounds with known parts** — recover "crypto-industrie", "blockchain-netwerk" where both parts are in freq list. Currently blocked by hyphenated jargon filter.
-- [ ] **peptide lemma override** — add "peptid → peptide" to nl_lemmas.tsv (Stanza misspelling)
+hoofdpijn (×2), samenbrengen — `_clean_lemma` rejoins correctly. Compound scoring bug fixed.
 
 ### TODO — structural
 
