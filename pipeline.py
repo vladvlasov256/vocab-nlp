@@ -21,7 +21,7 @@ LANG_PRESETS = {
         "levels": {
             "A0": {"band": {"known": 0,     "target": 1000},  "adv_weight": 0.7, "max_phrases": 3, "threshold": 0.5},
             "A1": {"band": {"known": 500,   "target": 3000},  "adv_weight": 0.7, "max_phrases": 3, "threshold": 0.5},
-            "A2": {"band": {"known": 1500,  "target": 5000},  "adv_weight": 1.0, "max_phrases": 2, "threshold": 0.5},
+            "A2": {"band": {"known": 1500,  "target": 5000},  "adv_weight": 1.0, "max_phrases": 3, "threshold": 0.5},
             "B1": {"band": {"known": 3000,  "target": 8000},  "adv_weight": 1.0, "max_phrases": 3, "threshold": 0.5},
         },
     },
@@ -642,10 +642,20 @@ def extract(doc, lang: str, freq: dict[str, int], level: str = "A0", join_separa
     # Numeric tokens (e.g. "2026.", "26.", "1.") — not vocabulary
     candidates = [item for item in candidates if not re.match(r"^\d+\.?$", item["text"])]
 
-    # Hyphenated jargon not in freq list (e.g. "non-dom", "e-mail" when not in list).
-    # Separable verbs use "|" not "-", so this won't affect them.
-    candidates = [item for item in candidates
-                  if not ("-" in item["text"] and item["text"].lower() not in freq)]
+    # Hyphenated jargon not in freq list (e.g. "non-dom").
+    # Allow compounds where both parts are in freq list and at least one
+    # part ranks above the known band (not just two generic words).
+    def _keep_hyphenated(text):
+        if "-" not in text:
+            return True
+        if text.lower() in freq:
+            return True
+        parts = text.lower().split("-", 1)
+        if len(parts) != 2 or not all(freq.get(p) is not None for p in parts):
+            return False
+        known = LANG_PRESETS[lang]["levels"][level]["band"]["known"]
+        return all(freq.get(p) > known for p in parts)
+    candidates = [item for item in candidates if _keep_hyphenated(item["text"])]
 
     # Probable proper nouns mis-tagged as NOUN/ADJ by Stanza.
     # If the surface form is capitalized mid-sentence and the lemma isn't in
