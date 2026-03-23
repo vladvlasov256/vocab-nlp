@@ -124,20 +124,20 @@ uv run --group bench python bench/run.py --lang en
 uv run --group bench python bench/run.py --text en_a2_03 -v  # single text, print judge prompt
 ```
 
-### Dutch (v7, contextual TF-IDF boost) — A2: +0.10
+### Dutch (v7, contextual TF-IDF boost)
 
 | Level | Pipeline avg | LLM avg | Delta |
 |-------|-------------|---------|-------|
-| A0 | 4.5 | 2.9 | +1.60 |
-| A1 | 4.2 | 3.6 | +0.60 |
-| A2 | 4.2 | 4.1 | +0.10 |
-| **Overall** | **4.3** | **3.5** | **+0.77** |
+| A0 | 4.4 | 2.6 | +1.80 |
+| A1 | 4.5 | 3.1 | +1.40 |
+| A2 | 4.3 | 4.0 | +0.30 |
+| **Overall** | **4.4** | **3.2** | **+1.17** |
 
-A2 improved from -0.30 → +0.10 with contextual TF-IDF boost (4 wins, 3 ties, 3 losses). Serbian and English benchmarks not yet re-run with v7.
+All levels positive. A2 improved from -0.30 → +0.30 with contextual TF-IDF boost. Serbian and English benchmarks not yet re-run with v7.
 
 ### Known issues
 
-**A2 remaining losses (-1 on 3/10 texts):** nl_a2_01 and nl_a2_02 lose on multi-word beyond-frequency terms (crypto-industrie, blockchain-netwerk, kunstmatige intelligentie) that the pipeline structurally can't reach. nl_a2_09 loses on medical symptom terms (hoofdpijn, huiduitslag, stijve nek) that Stanza splits or doesn't recognize as compounds.
+**A2 remaining losses (-1 on 3/10 texts):** nl_a2_01 and nl_a2_02 lose on multi-word beyond-frequency terms (crypto-industrie, blockchain-netwerk, kunstmatige intelligentie) that the pipeline structurally can't reach. nl_a2_08 loses on known-band words crowded out of top-15 by target-band words.
 
 **Dutch:**
 - **"vroeger" lemmatized as "vroeg"** — Stanza and Wiktionary both treat "vroeger" as the comparative of "vroeg" (early), but in most contexts it's a separate word meaning "formerly." No clean fix without word-sense disambiguation.
