@@ -3,6 +3,7 @@
 import csv
 import json
 import logging
+import math
 import re
 from pathlib import Path
 
@@ -477,7 +478,7 @@ def extract(doc, lang: str, freq: dict[str, int], level: str = "A0", join_separa
         "SYM",    # symbols
         "X",      # foreign/other
     }
-    for sent in doc.sentences:
+    for sent_idx, sent in enumerate(doc.sentences):
         # Build lookup for merge logic
         words_by_id = {w.id: w for w in sent.words}
 
@@ -586,7 +587,7 @@ def extract(doc, lang: str, freq: dict[str, int], level: str = "A0", join_separa
                 # lowercase "payments" (legitimate) isn't blocked by "Payments" (PROPN).
                 if word.text in propn_surfaces:
                     continue
-                item = {"text": word.lemma, "pos": word.upos, "_surface": word.text, "_sent_initial": word.id == 1}
+                item = {"text": word.lemma, "pos": word.upos, "_surface": word.text, "_sent_initial": word.id == 1, "_sent_idx": sent_idx}
                 if word.upos == "VERB":
                     item["_verb_id"] = word.id
                 candidates.append(item)
@@ -670,6 +671,9 @@ def extract(doc, lang: str, freq: dict[str, int], level: str = "A0", join_separa
     # Count how many times each lemma appears (before dedup) for repetition boost.
     from collections import Counter
     _lemma_counts = Counter(item["text"].lower() for item in candidates)
+    _total_tokens = len(candidates)
+    # Track which lemmas appear in the first sentence
+    _in_first_sent = {item["text"].lower() for item in candidates if item.get("_sent_idx") == 0}
 
     # Pre-seed seen set with joined forms of separable verbs so standalone
     # duplicates like "plaatsvinden" are suppressed when "plaats|vinden" exists.
@@ -683,10 +687,12 @@ def extract(doc, lang: str, freq: dict[str, int], level: str = "A0", join_separa
         if key not in seen:
             seen.add(key)
             item["_count"] = _lemma_counts[key]
+            item["_in_first_sent"] = key in _in_first_sent
             unique.append(item)
         elif "|" in item["text"]:
             # Always keep the separable verb itself
             item["_count"] = 1
+            item["_in_first_sent"] = key in _in_first_sent
             unique.append(item)
 
     # --- Step 6: Join separable verbs if requested (benchmark mode) ---
@@ -702,6 +708,7 @@ def extract(doc, lang: str, freq: dict[str, int], level: str = "A0", join_separa
     for item in unique:
         item.pop("_surface", None)
         item.pop("_sent_initial", None)
+        item.pop("_sent_idx", None)
         item.pop("_verb_id", None)
         parts = item.pop("_parts", None)
         rank_key = item.pop("_rank_key", item["text"].lower())
@@ -732,14 +739,21 @@ def extract(doc, lang: str, freq: dict[str, int], level: str = "A0", join_separa
             weight = rank_to_weight(rank, lang, level)
         if item["pos"] == "ADV":
             weight *= level_settings.get("adv_weight", 1.0)
-        # Repetition boost: multiply weight by occurrence count.
-        # The known-band gradient (0.05–0.45) naturally limits this —
-        # very common words (rank 48 → 0.05) stay low even at 3x,
-        # while near-boundary words (rank 1014 → 0.32) cross 0.5 at 2x.
+        # Contextual boost: TF-IDF-like overrepresentation + first-sentence signal.
+        # Words that appear more often than expected (given their corpus rank) in this
+        # specific text are likely topical. This lets known-band words like "bedrijf"
+        # (rank ~1200) cross the 0.5 threshold when they're central to the text.
         count = item.pop("_count", 1)
-        if count > 1:
-            weight = min(weight * count, 1.0)
-        item["weight"] = weight
+        in_first_sent = item.pop("_in_first_sent", False)
+        if rank is not None and rank > 0 and _total_tokens > 0:
+            overrep = count * rank / _total_tokens
+            contextual_bonus = math.log2(max(1, overrep)) * 0.15
+            if in_first_sent:
+                contextual_bonus += 0.1
+            weight = weight + contextual_bonus
+        elif count > 1:
+            weight = weight * count
+        item["weight"] = min(weight, 1.0)
         item["in_target"] = rank is not None and band["known"] < rank <= band["target"]
 
     unique.sort(key=lambda x: x["weight"], reverse=True)
