@@ -108,23 +108,23 @@ def load_freq_en() -> dict[str, int]:
 FREQ_LOADERS = {"nl": load_freq_nl, "sr": load_freq_sr, "en": load_freq_en}
 
 
-def _load_collocations(lang: str) -> set[str]:
-    """Load collocation whitelist for a language. Returns set of 'word1 word2' bigrams."""
+def _load_collocations(lang: str) -> dict[str, float]:
+    """Load collocation whitelist for a language. Returns {bigram: npmi} dict."""
     path = DATA_DIR / f"collocations_{lang}.json"
     if not path.exists():
-        return set()
+        return {}
     data = json.loads(path.read_text())
-    bigrams = set()
+    bigrams: dict[str, float] = {}
     for items in data.values():
         for item in items:
-            bigrams.add(item["bigram"])
+            bigrams[item["bigram"]] = item.get("npmi", 0.0)
     return bigrams
 
 
-_COLLOCATIONS: dict[str, set[str]] = {}
+_COLLOCATIONS: dict[str, dict[str, float]] = {}
 
 
-def get_collocations(lang: str) -> set[str]:
+def get_collocations(lang: str) -> dict[str, float]:
     if lang not in _COLLOCATIONS:
         _COLLOCATIONS[lang] = _load_collocations(lang)
     return _COLLOCATIONS[lang]
@@ -370,7 +370,9 @@ def extract_phrases(doc, lang: str, freq: dict[str, int], level: str = "A0") -> 
         weights = [rank_to_weight(freq.get(comp), lang, level) for comp in c["_components"]]
         if not any(w >= 0.6 for w in weights):
             continue  # at least one component must be in target or beyond band
-        in_whitelist = c["text"] in collocations
+        colloc_key = " ".join(c["_components"])
+        npmi = collocations.get(colloc_key)
+        in_whitelist = npmi is not None
         # VERB+NOUN phrases must be in whitelist — dep obj is too noisy otherwise.
         if c["type"] == "verb_phrase" and not in_whitelist:
             score = max(weights)
@@ -397,6 +399,9 @@ def extract_phrases(doc, lang: str, freq: dict[str, int], level: str = "A0") -> 
             score += 0.05
         if all(0.3 < w <= 1.0 for w in weights):
             score += 0.05  # all target-band
+        # Corpus-backed phrases get an NPMI boost so they compete with singles
+        if npmi is not None and npmi > 0:
+            score *= (1 + npmi)
         c["score"] = min(score, 1.0)
         scored.append(c)
 
@@ -746,12 +751,11 @@ def extract(doc, lang: str, freq: dict[str, int], level: str = "A0", join_separa
     # Only phrases above threshold swallow their component singles.
     # Rejected phrases must not eat singles — the single is the fallback.
     _THRESHOLD = level_settings.get("threshold", 0.5)
-    max_phrases = level_settings.get("max_phrases", 3)
     for p in phrases:
         p.pop("_component_pos", None)
 
-    # Select top phrases up to the cap
-    accepted_phrases = [p for p in phrases if p["score"] > _THRESHOLD][:max_phrases]
+    # No hard cap — corpus-boosted scores let phrases compete with singles naturally
+    accepted_phrases = [p for p in phrases if p["score"] > _THRESHOLD]
 
     # Only swallow components of accepted phrases
     phrase_components = set()
