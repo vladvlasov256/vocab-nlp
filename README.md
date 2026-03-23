@@ -48,7 +48,7 @@ Collect NOUN, VERB, ADJ, ADV tokens, then apply heuristics. NUM and PROPN go to 
 - NOUN→NOUN (compound): "bloedvergiftiging"
 - VERB→NOUN (obj): "verdienen loon", "geven antwoord"
 
-Phrases are scored using `max(component_weights)` and compete on the same 0–1 scale as singles. A per-level cap limits phrase count (A2: max 2, others: max 3). Phrases above threshold swallow their component singles to avoid duplication. A collocation whitelist built from OpenSubtitles (NPMI-scored bigrams) provides positive signal for phrase quality.
+Phrases are scored using `max(component_weights)` and compete on the same 0–1 scale as singles. Phrases above threshold swallow their component singles to avoid duplication. A dense collocation whitelist (15K bigrams from 105M-line OpenSubtitles corpus, scored with NPMI) boosts phrase quality — corpus-confirmed phrases get `score *= (1 + npmi)`, letting them compete naturally with singles without a hard cap.
 
 **CEFR frequency ranking** — Each lemma is scored by its rank in a corpus frequency list (SUBTLEX-NL for Dutch, srLex 1.3 for Serbian). Scoring is level-aware with a gradient within the known band:
 
@@ -60,6 +60,8 @@ Phrases are scored using `max(component_weights)` and compete on the same 0–1 
 | B1 | top 3000 | top 8000 | Surface advanced vocab |
 
 Words in the target band score 1.0, beyond/unknown score 0.6. Known-band words score on a gradient (0.05–0.45) based on rank position — words near the target boundary score higher than very common words. Output is sorted by score, filtered at 0.5, capped at 15 items.
+
+**Contextual TF-IDF boost** — Pure frequency scoring misses known-band words that are topical in the current text (e.g. "bedrijf" at rank ~1200 is filtered as "too common" even when it's the central topic). To recover these, each candidate gets a contextual bonus based on overrepresentation: `bonus = log2(max(1, count × rank / total_tokens)) × 0.15`. Words appearing in the first sentence get an additional +0.1 bonus. This lets contextually important known-band words cross the 0.5 threshold while keeping truly common words (rank < 400) filtered.
 
 ## API
 
@@ -122,20 +124,20 @@ uv run --group bench python bench/run.py --lang en
 uv run --group bench python bench/run.py --text en_a2_03 -v  # single text, print judge prompt
 ```
 
-### Dutch (v6, NPMI-boosted phrases) — Cohen's d = 0.47
+### Dutch (v7, contextual TF-IDF boost) — A2: +0.10
 
 | Level | Pipeline avg | LLM avg | Delta |
 |-------|-------------|---------|-------|
 | A0 | 4.5 | 2.9 | +1.60 |
 | A1 | 4.2 | 3.6 | +0.60 |
-| A2 | 4.2 | 4.5 | -0.30 |
-| **Overall** | **4.4** | **3.7** | **+0.70** |
+| A2 | 4.2 | 4.1 | +0.10 |
+| **Overall** | **4.3** | **3.5** | **+0.77** |
 
-Serbian and English benchmarks not yet re-run with v6 phrases.
+A2 improved from -0.30 → +0.10 with contextual TF-IDF boost (4 wins, 3 ties, 3 losses). Serbian and English benchmarks not yet re-run with v7.
 
 ### Known issues
 
-**A2 gap (-0.30):** Remaining losses are almost entirely known-band single words (bedrijf, werken, stoppen, lichaam, etc.) the LLM picks as contextually important but frequency scoring filters as "too common." This is the structural ceiling for frequency-based extraction. See `todo.md` for per-text analysis.
+**A2 remaining losses (-1 on 3/10 texts):** nl_a2_01 and nl_a2_02 lose on multi-word beyond-frequency terms (crypto-industrie, blockchain-netwerk, kunstmatige intelligentie) that the pipeline structurally can't reach. nl_a2_09 loses on medical symptom terms (hoofdpijn, huiduitslag, stijve nek) that Stanza splits or doesn't recognize as compounds.
 
 **Dutch:**
 - **"vroeger" lemmatized as "vroeg"** — Stanza and Wiktionary both treat "vroeger" as the comparative of "vroeg" (early), but in most contexts it's a separate word meaning "formerly." No clean fix without word-sense disambiguation.
