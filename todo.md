@@ -1,14 +1,15 @@
 # TODO
 
-## A2 benchmark gap (delta -0.50)
+## A2 benchmark gap (delta -0.30)
 
 ### Benchmark results (Dutch)
 
 - A0: +1.60
 - A1: +0.80
-- A2: -0.50
-- Overall: +0.63
-- Pipeline avg: 4.0, LLM avg: 4.5
+- A2: -0.30 (was -0.50)
+- Overall: +0.70
+- Pipeline avg: 4.2, LLM avg: 4.5
+- Cohen's d: -0.32
 
 ### What was fixed
 
@@ -32,49 +33,32 @@
 - [x] Hyphenated compounds — allow when both parts in freq and both above known band (crypto-industrie)
 - [x] Judge hint for separable verbs — Dutch-specific hint so judge equates "meespelen" = "spelen mee"
 - [x] peptide lemma — already correct via Wiktionary overrides, no fix needed
+- [x] Dense collocation whitelist — 105M-line OpenSubtitles corpus processed with spaCy on Modal T4 GPU. 15K bigrams (5K per pattern: ADJ+NOUN, VERB+NOUN, VERB+ADP)
+- [x] NPMI-boosted phrase scoring — phrases confirmed by corpus get score × (1 + NPMI), compete naturally with singles. Removed hard phrase cap
+- [x] Whitelist matching fix — match on lemma components instead of display text (kunstmatig vs kunstmatige)
 
 ### Investigated but not fixed
 
 - **Separable verb parts demotion** — tried adding `_parts` to separable verbs so compound scoring demotes "plaatsvinden" (parts: plaats + vinden, both known-band). But this also demotes "meespelen" (parts: mee + spelen) which the judge wants. Can't distinguish light verbs from real separable verbs without a stop-list. Not worth the collateral damage.
-- **kunstmatige intelligentie still blocked** — extracted as phrase (score 0.65) but ranked 4th behind 3 phrases scoring 1.0 (digitale munt, slimme contract, spannend moment). Cap=3 added "spannend moment" instead. Raising cap further would eat too many single slots.
 
-### Remaining A2 misses by category
+### Remaining A2 failures (delta -0.30)
 
-#### 1. Single known-band words (22 misses) — biggest gap, not fixable
+7 texts still lose to LLM baseline. Root cause is almost entirely **known-band single words** — common words the LLM picks as contextually important but frequency-based scoring filters as "too common."
 
-Single-occurrence words the LLM picks as contextually important but we filter as "too common."
+#### Per-text analysis
 
-| Range | Words | Fixable? |
-|---|---|---|
-| rank < 500 (11) | zien, tijd, idee, begrijpen, werken, stoppen, proberen, kans, lopen, plek, belangrijk | No — too basic |
-| rank 500–1000 (6) | lichaam, verliezen, trots, lezen, schrijven, verkopen | No — 1 occurrence |
-| rank 1000–1500 (5) | bedrijf ×2, regelen, wedstrijd, regering | No — 1 occurrence |
+| Text | Delta | Pipeline misses | Category |
+|---|---|---|---|
+| nl_a2_01 | -1 | aandacht krijgen, samenbrengen, blockchain-netwerk | Multi-word + beyond-freq |
+| nl_a2_02 | -1 | cryptovaluta, passief inkomen, geautomatiseerde handel | Multi-word + beyond-freq |
+| nl_a2_03 | -1 | bedrijf, verkopen, idee | Known-band singles |
+| nl_a2_04 | -1 | bedrijf, leiders, verliezen, regering | Known-band singles |
+| nl_a2_06 | -1 | werken, stoppen, begrijpen, proberen, trots, wedstrijd | Known-band singles |
+| nl_a2_08 | -1 | lichaam, veilig, gebruiken | Known-band singles |
+| nl_a2_09 | 0 | uitbraak, ruggenmerg, huiduitslag | Beyond-freq / Stanza splits |
 
-Lowering known boundary (1500 → 800) would recover rank 1000–1500 words but flood output with rank < 500 noise.
+#### Structural gap
 
-#### 2. Multi-word phrases (17 misses) — second biggest gap
+The remaining delta is the ceiling for frequency-based extraction. The LLM baseline uses full text comprehension to select contextually important words regardless of frequency. Our pipeline can only rank by frequency band — a word like "bedrijf" (rank ~1200) is filtered as known-band even when it's the central topic of the text.
 
-| Type | Examples | Fixable? |
-|---|---|---|
-| Format diff — sep. verbs (3) | spelen mee, uitkijken naar, doorgaan naar | Judge hint added |
-| Phrase cap overflow (1) | kunstmatige intelligentie | Investigated, not without trade-off |
-| VERB+NOUN not in whitelist (3) | afspraak maken, toegankelijk maken, aandacht krijgen | Dense whitelist would help |
-| 3+ word phrases (4) | medische hulp zoeken, op tijd hulp zoeken | No — beyond bigram extraction |
-| ADJ/participle + copula (3) | winstgevend worden, aantrekkelijk worden, gestorven zijn | No — not a dep pattern we extract |
-| Other (3) | ogen hebben voor (idiom), snel herkennen (ADV+VERB), vechten om | No |
-
-#### 3. Target-band crowded out (4 misses)
-
-Score 1.0 but don't make top-15 due to competition: netwerk, materiaal, hersenen, besluiten
-
-#### 4. Beyond/unknown singles (6 misses)
-
-Not recoverable: blockchain-netwerk (not in freq), handelsrobot (not in freq), ruggenmerg (Stanza doesn't split), huiduitslag (Stanza doesn't split), leiders/rijke (known-band after lemmatization)
-
-#### 5. Minor noise
-
-**plaatsvinden** in nl_a2_05 (score 0.60) — the separable verb itself, not a duplicate. Can't demote without also demoting useful separable verbs like meespelen.
-
-### TODO — structural
-
-- [ ] **Dense collocation whitelist** — run full 105M-line corpus on GPU. Currently 1304 VERB+NOUN bigrams from 4M tokens. Would recover "afspraak maken", "aandacht krijgen" and other VERB+NOUN pairs blocked by whitelist requirement.
+This gap is not fixable without adding semantic/contextual understanding to the pipeline, which would defeat the purpose of a lightweight NLP approach.

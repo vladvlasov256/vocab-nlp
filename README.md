@@ -122,20 +122,20 @@ uv run --group bench python bench/run.py --lang en
 uv run --group bench python bench/run.py --text en_a2_03 -v  # single text, print judge prompt
 ```
 
-### Dutch (v5, with phrases) — Cohen's d = 0.47
+### Dutch (v6, NPMI-boosted phrases) — Cohen's d = 0.47
 
 | Level | Pipeline avg | LLM avg | Delta |
 |-------|-------------|---------|-------|
 | A0 | 4.5 | 2.9 | +1.60 |
-| A1 | 4.6 | 3.8 | +0.80 |
-| A2 | 3.8 | 4.4 | -0.60 |
-| **Overall** | **4.3** | **3.7** | **+0.60** |
+| A1 | 4.2 | 3.6 | +0.60 |
+| A2 | 4.2 | 4.5 | -0.30 |
+| **Overall** | **4.4** | **3.7** | **+0.70** |
 
-Serbian and English benchmarks not yet re-run with v5 phrases.
+Serbian and English benchmarks not yet re-run with v6 phrases.
 
 ### Known issues
 
-**A2 regression:** Known-band words (rank < 1500) max out at score 0.45 — below the 0.5 API threshold — so contextually valuable words like "stoppen", "wedstrijd", "trots" don't surface. The LLM baseline picks these. See `todo.md` for analysis and possible fixes.
+**A2 gap (-0.30):** Remaining losses are almost entirely known-band single words (bedrijf, werken, stoppen, lichaam, etc.) the LLM picks as contextually important but frequency scoring filters as "too common." This is the structural ceiling for frequency-based extraction. See `todo.md` for per-text analysis.
 
 **Dutch:**
 - **"vroeger" lemmatized as "vroeg"** — Stanza and Wiktionary both treat "vroeger" as the comparative of "vroeg" (early), but in most contexts it's a separate word meaning "formerly." No clean fix without word-sense disambiguation.
