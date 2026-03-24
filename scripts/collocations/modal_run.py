@@ -25,7 +25,6 @@ import modal
 SPACY_MODELS = {
     "nl": "nl_core_news_sm",
     "en": "en_core_web_sm",
-    "sr": "sr_core_news_sm",
 }
 
 app = modal.App("vocab-collocations")
