@@ -4,12 +4,15 @@ Usage:
     # One-time: create volume and upload corpus
     modal volume create vocab-data
     modal volume put vocab-data corpus/nl_opensubs.txt nl_opensubs.txt
+    modal volume put vocab-data corpus/en_opensubs.txt en_opensubs.txt
 
-    # Run
+    # Run (default: nl)
     modal run scripts/collocations/modal_run.py
+    modal run scripts/collocations/modal_run.py --lang en
 
     # Download result
     modal volume get vocab-data collocations_nl.json collocations_nl.json
+    modal volume get vocab-data collocations_en.json collocations_en.json
 """
 
 import json
@@ -19,12 +22,18 @@ from collections import Counter
 
 import modal
 
+SPACY_MODELS = {
+    "nl": "nl_core_news_sm",
+    "en": "en_core_web_sm",
+    "sr": "sr_core_news_sm",
+}
+
 app = modal.App("vocab-collocations")
 
 image = (
     modal.Image.from_registry("nvidia/cuda:12.4.0-runtime-ubuntu22.04", add_python="3.12")
     .pip_install("spacy", "cupy-cuda12x")
-    .run_commands("python -m spacy download nl_core_news_sm")
+    .run_commands(*[f"python -m spacy download {m}" for m in SPACY_MODELS.values()])
 )
 
 volume = modal.Volume.from_name("vocab-data")
@@ -41,11 +50,12 @@ TOP_N = 5000
     volumes={"/data": volume},
     timeout=86400,
 )
-def build_collocations(limit: int | None = None):
+def build_collocations(lang: str = "nl", limit: int | None = None):
     import spacy
 
+    model_name = SPACY_MODELS[lang]
     spacy.require_gpu()
-    nlp = spacy.load("nl_core_news_sm")
+    nlp = spacy.load(model_name)
 
     unigram_counts, bigram_counts, total_tokens = Counter(), Counter(), 0
     batch_size = 500
@@ -53,7 +63,7 @@ def build_collocations(limit: int | None = None):
     done = 0
     t0 = time.time()
 
-    corpus_path = "/data/nl_opensubs.txt"
+    corpus_path = f"/data/{lang}_opensubs.txt"
 
     with open(corpus_path) as f:
         for line in f:
@@ -140,7 +150,7 @@ def build_collocations(limit: int | None = None):
         for it in items[:10]:
             print(f"  {it['bigram']:30s}  count={it['count']:6d}  NPMI={it['npmi']:+.3f}  score={it['score']:+.2f}")
 
-    out_path = "/data/collocations_nl.json"
+    out_path = f"/data/collocations_{lang}.json"
     with open(out_path, "w") as f:
         json.dump(results, f, indent=2, ensure_ascii=False)
     volume.commit()
@@ -150,6 +160,6 @@ def build_collocations(limit: int | None = None):
 
 
 @app.local_entrypoint()
-def main():
-    result = build_collocations.remote()
+def main(lang: str = "nl"):
+    result = build_collocations.remote(lang=lang)
     print(f"\nResult: {result}")
