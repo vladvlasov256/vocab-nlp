@@ -44,8 +44,8 @@ LANG_PRESETS = {
         "levels": {
             "A0": {"band": {"known": 0,     "target": 1000},  "adv_weight": 0.7, "max_phrases": 3, "threshold": 0.5},
             "A1": {"band": {"known": 300,   "target": 3000},  "adv_weight": 0.7, "max_phrases": 3, "threshold": 0.5},
-            "A2": {"band": {"known": 800,   "target": 5000},  "adv_weight": 1.0, "max_phrases": 2, "threshold": 0.5},
-            "B1": {"band": {"known": 1500,  "target": 8000},  "adv_weight": 1.0, "max_phrases": 3, "threshold": 0.5},
+            "A2": {"band": {"known": 800,   "target": 5000},  "adv_weight": 1.0, "max_phrases": 2, "threshold": 0.5, "verb_boost": 0.35},
+            "B1": {"band": {"known": 1500,  "target": 8000},  "adv_weight": 1.0, "max_phrases": 3, "threshold": 0.5, "verb_boost": 0.25},
         },
     },
 }
@@ -300,9 +300,9 @@ def _clean_lemma(text: str, freq: dict[str, int] | None = None) -> tuple[str, tu
 # "hebben contract" (verb rank ~23 in NL) is noise,
 # "voeren gesprek" (verb rank ~800 in NL) is a real collocation.
 _PHRASE_RANK_CAPS = {
-    "nl": {"VERB": 250, "ADJ": 400, "NOUN": 100},
-    "en": {"VERB": 150, "ADJ": 300, "NOUN": 80},
-    "sr": {"VERB": 150, "ADJ": 300, "NOUN": 80},
+    "nl": {"VERB": 250, "NOUN": 100, "ADJ": {"A0": 200, "A1": 300, "A2": 700, "B1": 700}},
+    "en": {"VERB": 150, "NOUN": 80,  "ADJ": {"A0": 150, "A1": 250, "A2": 600, "B1": 600}},
+    "sr": {"VERB": 150, "NOUN": 80,  "ADJ": {"A0": 150, "A1": 250, "A2": 300, "B1": 300}},
 }
 
 _PHRASE_BIGRAMS = {
@@ -387,6 +387,8 @@ def extract_phrases(doc, lang: str, freq: dict[str, int], level: str = "A0") -> 
             lang_caps = _PHRASE_RANK_CAPS.get(lang, {})
             for comp, pos in zip(c["_components"], c["_component_pos"]):
                 cap = lang_caps.get(pos)
+                if isinstance(cap, dict):
+                    cap = cap.get(level, 0)
                 if cap and freq.get(comp, float("inf")) <= cap:
                     too_generic = True
                     break
@@ -739,6 +741,8 @@ def extract(doc, lang: str, freq: dict[str, int], level: str = "A0", join_separa
             weight = rank_to_weight(rank, lang, level)
         if item["pos"] == "ADV":
             weight *= level_settings.get("adv_weight", 1.0)
+        if item["pos"] == "VERB":
+            weight += level_settings.get("verb_boost", 0)
         # Contextual boost: TF-IDF-like overrepresentation + first-sentence signal.
         # Words that appear more often than expected (given their corpus rank) in this
         # specific text are likely topical. This lets known-band words like "bedrijf"

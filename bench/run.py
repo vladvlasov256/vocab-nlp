@@ -39,14 +39,17 @@ You are evaluating vocabulary lists extracted from a short {language} text for a
 ## List B
 {list_b}
 
-The learner is reading this text as part of a lesson. The goal is to help them understand and learn from it. Minor spelling imperfections are acceptable if the word is recognizable.
+The learner is reading this text as part of a lesson. The goal is to help them understand and learn from it.
+
+Scoring rules:
+- Multi-word items count as covering each component word. Do not penalize a list for missing a word that appears as part of a multi-word item.
+- Minor spelling imperfections are acceptable if the word is clearly recognizable.
+- Accept dialect variants as correct. Accept standard lemmatization even when the lemma form differs from the surface form in the text.
 
 Score each list 1-5 on:
 - **Relevance**: Does the list help this {level} learner understand this specific text?
 - **Coverage**: Does the list capture the important vocabulary from the text?
 - **Noise**: Are there false picks — trivial words, proper nouns, or unrecognizable words?
-
-Accept dialect variants as correct. Accept standard lemmatization even when the lemma form differs from the surface form in the text.
 {lang_hints}
 Respond with ONLY valid JSON, no markdown:
 {{"score_a": <int 1-5>, "score_b": <int 1-5>, "reasoning": "<1-2 sentences>"}}
@@ -110,15 +113,15 @@ def judge(client: OpenAI, text: str, lang: str, level: str, pipeline_lemmas: lis
         language=language,
         level=level,
         text=text,
-        list_a=", ".join(pipeline_lemmas),
-        list_b=", ".join(baseline_lemmas),
+        list_a="\n".join(f"{i+1}. {w}" for i, w in enumerate(pipeline_lemmas)),
+        list_b="\n".join(f"{i+1}. {w}" for i, w in enumerate(baseline_lemmas)),
         lang_hints=lang_hints,
     )
     logging.getLogger("bench").info(f"\n{'='*60}\nJUDGE PROMPT for {level} text:\n{'='*60}\n{prompt}\n{'='*60}")
     response = client.chat.completions.create(
         model=JUDGE_MODEL,
         messages=[{"role": "user", "content": prompt}],
-        temperature=1,
+        temperature=1,  # gpt-5 only supports temperature=1
     )
     content = response.choices[0].message.content.strip()
     return json.loads(content)
