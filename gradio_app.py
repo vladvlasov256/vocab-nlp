@@ -58,8 +58,8 @@ def analyze(text: str, lang: str, level: str):
     above = [item for item in all_items if item["score"] > threshold][:MAX_LEMMAS]
     below = [item for item in all_items if item["score"] <= threshold]
 
-    candidates = [[i["text"], i.get("pos", i["type"]), i.get("rank") or "—", _band(i)] for i in above]
-    filtered = [[i["text"], i.get("pos", i["type"]), i.get("rank") or "—", _band(i)] for i in below]
+    candidates = [[i["text"], i.get("pos", i["type"]), f"{i['score']:.2f}", _band(i)] for i in above]
+    filtered = [[i["text"], i.get("pos", i["type"]), f"{i['score']:.2f}", _band(i)] for i in below]
     propn = [[i["text"]] for i in result.get("proper_nouns", [])]
     nums = [[i["text"]] for i in result.get("numbers", [])]
     merged = [
@@ -82,8 +82,8 @@ with gr.Blocks(title="vocab-nlp") as demo:
             btn = gr.Button("Submit", variant="primary")
 
         with gr.Column():
-            candidates_out = gr.Dataframe(headers=["Candidate", "POS", "Rank", "Band"], label="Candidates")
-            filtered_out = gr.Dataframe(headers=["Candidate", "POS", "Rank", "Band"], label="Filtered out")
+            candidates_out = gr.Dataframe(headers=["Text", "Type", "Score", "Band"], label="Candidates")
+            filtered_out = gr.Dataframe(headers=["Text", "Type", "Score", "Band"], label="Filtered out")
             with gr.Row():
                 propn_out = gr.Dataframe(headers=["Name"], label="Proper Nouns")
                 nums_out = gr.Dataframe(headers=["Number"], label="Numbers")
