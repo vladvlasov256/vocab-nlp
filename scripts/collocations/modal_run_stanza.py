@@ -11,12 +11,16 @@ Usage:
     # Run
     modal run scripts/collocations/modal_run_stanza.py --lang sr --corpus sr_opensubs_1m.txt
 
+    # Resume from checkpoint (after OOM or timeout)
+    modal run scripts/collocations/modal_run_stanza.py --lang sr --corpus sr_opensubs_50m.txt
+
     # Download result
     modal volume get vocab-data collocations_sr.json collocations_sr.json
 """
 
 import json
 import math
+import pickle
 import time
 from collections import Counter
 
@@ -36,7 +40,9 @@ PATTERNS = {("ADJ", "NOUN"), ("VERB", "NOUN"), ("VERB", "ADP")}
 SKIP_UPOS = {"PUNCT", "SYM", "X"}
 MIN_COUNT = 3
 TOP_N = 5000
-BATCH_LINES = 50_000
+BATCH_LINES = 20_000
+MAX_LINE_LEN = 500
+CHECKPOINT_EVERY = 1_000_000
 
 
 def count_doc(doc, unigram_counts, bigram_counts):
@@ -64,6 +70,44 @@ def count_doc(doc, unigram_counts, bigram_counts):
     return tokens
 
 
+def save_checkpoint(lang, done, total_tokens, unigram_counts, bigram_counts):
+    """Save counters to volume for resumption."""
+    ckpt = {
+        "done": done,
+        "total_tokens": total_tokens,
+        "unigram_counts": dict(unigram_counts),
+        "bigram_counts": {f"{k[0]}|{k[1]}|{k[2]}|{k[3]}": v for k, v in bigram_counts.items()},
+    }
+    path = f"/data/checkpoint_{lang}_{done}.pkl"
+    with open(path, "wb") as f:
+        pickle.dump(ckpt, f)
+    volume.commit()
+    print(f"  Checkpoint saved: {path} ({len(unigram_counts):,} uni, {len(bigram_counts):,} bi)")
+
+
+def load_latest_checkpoint(lang):
+    """Find and load the most recent checkpoint from volume."""
+    import glob
+    checkpoints = sorted(glob.glob(f"/data/checkpoint_{lang}_*.pkl"))
+    if not checkpoints:
+        return None
+    path = checkpoints[-1]
+    with open(path, "rb") as f:
+        ckpt = pickle.load(f)
+    # Restore tuple keys for bigram_counts
+    bigram_counts = Counter()
+    for k, v in ckpt["bigram_counts"].items():
+        parts = k.split("|")
+        bigram_counts[(parts[0], parts[1], parts[2], parts[3])] = v
+    print(f"  Resumed from {path}: {ckpt['done']:,} lines, {ckpt['total_tokens']:,} tokens")
+    return {
+        "done": ckpt["done"],
+        "total_tokens": ckpt["total_tokens"],
+        "unigram_counts": Counter(ckpt["unigram_counts"]),
+        "bigram_counts": bigram_counts,
+    }
+
+
 @app.function(
     image=image,
     gpu="T4",
@@ -73,22 +117,38 @@ def count_doc(doc, unigram_counts, bigram_counts):
 )
 def build_collocations(lang: str = "sr", corpus: str | None = None, limit: int | None = None):
     import stanza
+    import torch
 
     nlp = stanza.Pipeline(lang, processors="tokenize,pos,lemma", use_gpu=True, verbose=False,
                            tokenize_pretokenized=True, pos_batch_size=10000, lemma_batch_size=10000)
 
-    unigram_counts, bigram_counts, total_tokens = Counter(), Counter(), 0
+    # Try to resume from checkpoint
+    ckpt = load_latest_checkpoint(lang)
+    if ckpt:
+        unigram_counts = ckpt["unigram_counts"]
+        bigram_counts = ckpt["bigram_counts"]
+        total_tokens = ckpt["total_tokens"]
+        skip_lines = ckpt["done"]
+    else:
+        unigram_counts, bigram_counts, total_tokens = Counter(), Counter(), 0
+        skip_lines = 0
+
     batch = []
-    done = 0
+    done = skip_lines
+    last_checkpoint = skip_lines
     t0 = time.time()
 
     corpus_file = corpus or f"{lang}_opensubs.txt"
     corpus_path = f"/data/{corpus_file}"
 
     with open(corpus_path) as f:
-        for line in f:
+        for line_num, line in enumerate(f):
+            # Skip lines already processed in checkpoint
+            if line_num < skip_lines:
+                continue
+
             text = line.strip()
-            if not text:
+            if not text or len(text) > MAX_LINE_LEN:
                 continue
             batch.append(text)
 
@@ -96,21 +156,50 @@ def build_collocations(lang: str = "sr", corpus: str | None = None, limit: int |
                 batch = batch[:limit - done]
 
             if len(batch) >= BATCH_LINES:
-                doc = nlp("\n".join(batch))
-                total_tokens += count_doc(doc, unigram_counts, bigram_counts)
+                try:
+                    doc = nlp("\n".join(batch))
+                    total_tokens += count_doc(doc, unigram_counts, bigram_counts)
+                except torch.cuda.OutOfMemoryError:
+                    # Clear GPU memory and retry with half batch
+                    torch.cuda.empty_cache()
+                    print(f"  OOM at {done:,} lines, retrying with half batch ({len(batch)//2:,} lines)")
+                    half = len(batch) // 2
+                    doc = nlp("\n".join(batch[:half]))
+                    total_tokens += count_doc(doc, unigram_counts, bigram_counts)
+                    torch.cuda.empty_cache()
+                    doc = nlp("\n".join(batch[half:]))
+                    total_tokens += count_doc(doc, unigram_counts, bigram_counts)
+
                 done += len(batch)
                 batch = []
                 elapsed = time.time() - t0
-                rate = done / elapsed if elapsed > 0 else 0
+                rate = (done - skip_lines) / elapsed if elapsed > 0 else 0
                 if limit and done >= limit:
                     break
                 if done % 50_000 == 0:
                     print(f"  {done:,} lines ({rate:,.0f} lines/s, {total_tokens:,} tok)")
 
+                # Checkpoint every N lines
+                if done - last_checkpoint >= CHECKPOINT_EVERY:
+                    save_checkpoint(lang, done, total_tokens, unigram_counts, bigram_counts)
+                    last_checkpoint = done
+
     if batch:
-        doc = nlp("\n".join(batch))
-        total_tokens += count_doc(doc, unigram_counts, bigram_counts)
+        try:
+            doc = nlp("\n".join(batch))
+            total_tokens += count_doc(doc, unigram_counts, bigram_counts)
+        except torch.cuda.OutOfMemoryError:
+            torch.cuda.empty_cache()
+            half = len(batch) // 2
+            doc = nlp("\n".join(batch[:half]))
+            total_tokens += count_doc(doc, unigram_counts, bigram_counts)
+            torch.cuda.empty_cache()
+            doc = nlp("\n".join(batch[half:]))
+            total_tokens += count_doc(doc, unigram_counts, bigram_counts)
         done += len(batch)
+
+    # Final checkpoint
+    save_checkpoint(lang, done, total_tokens, unigram_counts, bigram_counts)
 
     elapsed = time.time() - t0
     print(f"Done: {done:,} lines, {total_tokens:,} tokens in {elapsed:.1f}s ({total_tokens/elapsed:,.0f} tok/s)")
