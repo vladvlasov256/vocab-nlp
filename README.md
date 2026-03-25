@@ -132,21 +132,23 @@ uv run --group bench python bench/run.py --text en_a2_03 -v  # single text, prin
 
 | Level | Pipeline avg | LLM avg | Delta |
 |-------|-------------|---------|-------|
-| A0 | 4.9 | 3.2 | +1.70 |
-| A1 | 4.8 | 3.8 | +1.00 |
-| A2 | 4.5 | 4.4 | +0.10 |
-| **Overall** | **4.7** | **3.8** | **+0.93** |
+| A0 | 4.8 | 2.9 | +1.90 |
+| A1 | 4.7 | 3.9 | +0.80 |
+| A2 | 4.5 | 4.2 | +0.30 |
+| **Overall** | **4.7** | **3.7** | **+1.00** |
 
-Cohen's d: 0.80. All levels positive. A2 improved from -0.30 → +0.10 with level-aware ADJ phrase caps and verb boost.
+Cohen's d: 0.87. All levels positive.
 
-### Dutch (v7, contextual TF-IDF boost)
+### Dutch
 
 | Level | Pipeline avg | LLM avg | Delta |
 |-------|-------------|---------|-------|
-| A0 | 4.4 | 2.6 | +1.80 |
-| A1 | 4.5 | 3.1 | +1.40 |
-| A2 | 4.3 | 4.0 | +0.30 |
-| **Overall** | **4.4** | **3.2** | **+1.17** |
+| A0 | 4.9 | 2.9 | +2.00 |
+| A1 | 4.9 | 3.5 | +1.40 |
+| A2 | 4.5 | 4.3 | +0.20 |
+| **Overall** | **4.8** | **3.6** | **+1.20** |
+
+Cohen's d: 1.07. All levels positive.
 
 ### Known issues
 
