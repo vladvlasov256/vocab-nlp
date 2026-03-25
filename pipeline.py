@@ -19,6 +19,9 @@ LANG_PRESETS = {
         "name": "Dutch",
         "filter_propn_by_surface": True,
         "separable_verbs": True,
+        "collocation_min_count": 3,
+        "collocation_min_npmi": 0.0,
+        "collocation_boost": 1.0,
         "levels": {
             "A0": {"band": {"known": 0,     "target": 1000},  "adv_weight": 0.7, "max_phrases": 3, "threshold": 0.5},
             "A1": {"band": {"known": 500,   "target": 3000},  "adv_weight": 0.7, "max_phrases": 3, "threshold": 0.5},
@@ -30,6 +33,9 @@ LANG_PRESETS = {
         "name": "Serbian",
         "filter_propn_by_surface": True,
         "separable_verbs": False,
+        "collocation_min_count": 3,
+        "collocation_min_npmi": 0.0,
+        "collocation_boost": 1.0,
         "levels": {
             "A0": {"band": {"known": 0,     "target": 1500},  "adv_weight": 0.7, "max_phrases": 3, "threshold": 0.5},
             "A1": {"band": {"known": 200,   "target": 3000},  "adv_weight": 0.7, "max_phrases": 3, "threshold": 0.5},
@@ -41,6 +47,9 @@ LANG_PRESETS = {
         "name": "English",
         "filter_propn_by_surface": True,
         "separable_verbs": False,
+        "collocation_min_count": 20,
+        "collocation_min_npmi": 0.15,
+        "collocation_boost": 0.5,
         "levels": {
             "A0": {"band": {"known": 0,     "target": 1000},  "adv_weight": 0.7, "max_phrases": 3, "threshold": 0.5},
             "A1": {"band": {"known": 300,   "target": 3000},  "adv_weight": 0.7, "max_phrases": 3, "threshold": 0.5},
@@ -115,10 +124,18 @@ def _load_collocations(lang: str) -> dict[str, float]:
     if not path.exists():
         return {}
     data = json.loads(path.read_text())
+    preset = LANG_PRESETS.get(lang, {})
+    min_count = preset.get("collocation_min_count", 3)
+    min_npmi = preset.get("collocation_min_npmi", 0.0)
     bigrams: dict[str, float] = {}
     for items in data.values():
         for item in items:
-            bigrams[item["bigram"]] = item.get("npmi", 0.0)
+            if item.get("count", 0) < min_count:
+                continue
+            npmi = item.get("npmi", 0.0)
+            if npmi < min_npmi:
+                continue
+            bigrams[item["bigram"]] = npmi
     return bigrams
 
 
@@ -316,23 +333,26 @@ _DEP_NOUN_RELS = {"amod", "compound"}
 _DEP_VERB_RELS = {"obj"}
 
 
-def extract_phrases(doc, lang: str, freq: dict[str, int], level: str = "A0") -> list[dict]:
+def extract_phrases(doc, lang: str, freq: dict[str, int], level: str = "A0", propn_stems: set | None = None) -> list[dict]:
     """Extract multi-word phrase candidates from dependency parse and POS bigrams.
 
-    Dependency-based extraction only:
+    Dependency-based extraction:
     - ADJ→NOUN (amod), NOUN→NOUN (compound)
     - VERB→NOUN (obj)
+    - VERB+ADP (positional, whitelist-gated: "talk about", "sit down")
 
     Scoring uses max(component_weights) so phrases compete on the same
     0-1 scale as single-word candidates.
     """
     candidates = []
+    collocations = get_collocations(lang)
 
     for sent in doc.sentences:
+        words = sent.words
         # --- Dependency-based extraction ---
-        for word in sent.words:
+        for word in words:
             if word.upos == "NOUN":
-                for dep in sent.words:
+                for dep in words:
                     if (dep.head == word.id
                             and dep.deprel in _DEP_NOUN_RELS
                             and dep.upos in ("ADJ", "NOUN")):
@@ -344,12 +364,30 @@ def extract_phrases(doc, lang: str, freq: dict[str, int], level: str = "A0") -> 
                         candidates.append(_make_phrase(parts, "noun_phrase", "dep", freq))
 
             if word.upos == "VERB":
-                for dep in sent.words:
+                for dep in words:
                     if (dep.head == word.id
                             and dep.deprel in _DEP_VERB_RELS
                             and dep.upos == "NOUN"):
                         parts = sorted([word, dep], key=lambda w: w.id)
                         candidates.append(_make_phrase(parts, "verb_phrase", "dep", freq))
+
+        # --- VERB+ADP positional extraction (whitelist-gated) ---
+        # Prepositions attach to nouns in dependency parse, not verbs,
+        # so we use positional bigrams and require collocation whitelist match.
+        for i, word in enumerate(words):
+            if word.upos != "VERB":
+                continue
+            for j in range(i + 1, min(i + 3, len(words))):
+                w2 = words[j]
+                if w2.upos == "ADP":
+                    lemma1 = (word.lemma or word.text).lower()
+                    lemma2 = (w2.lemma or w2.text).lower()
+                    colloc_key = f"{lemma1} {lemma2}"
+                    if colloc_key in collocations:
+                        candidates.append(_make_phrase([word, w2], "verb_phrase", "dep", freq))
+                    break  # only first ADP after verb
+                if w2.upos in ("VERB", "NOUN", "PROPN"):
+                    break  # stop if we hit another content word
 
     # --- Deduplicate by lemma-normalized text ---
     seen = set()
@@ -363,17 +401,32 @@ def extract_phrases(doc, lang: str, freq: dict[str, int], level: str = "A0") -> 
     # Phrases with unknown components are likely Stanza artifacts, not real collocations.
     unique = [c for c in unique if all(freq.get(comp) is not None for comp in c["_components"])]
 
+    # --- Filter: skip phrases containing known proper nouns ---
+    # Stanza sometimes mis-tags PROPN as NOUN mid-sentence (e.g. "CAB Payments").
+    if propn_stems:
+        unique = [c for c in unique if not any(comp in propn_stems for comp in c["_components"])]
+
+    # --- Filter: skip redundant compounds where one component contains the other ---
+    # e.g. "health healthcare" — healthcare already contains "health".
+    unique = [c for c in unique if not any(
+        a != b and (a in b or b in a)
+        for a, b in [(c["_components"][0], c["_components"][1])]
+    )]
+
     # --- Score: max(component_weights) + adjustments ---
     collocations = get_collocations(lang)
     scored = []
     too_generic_phrases = []
     for c in unique:
-        weights = [rank_to_weight(freq.get(comp), lang, level) for comp in c["_components"]]
-        if not any(w >= 0.6 for w in weights):
-            continue  # at least one component must be in target or beyond band
         colloc_key = " ".join(c["_components"])
         npmi = collocations.get(colloc_key)
         in_whitelist = npmi is not None
+        weights = [rank_to_weight(freq.get(comp), lang, level) for comp in c["_components"]]
+        # VERB+ADP phrases are whitelist-gated at extraction, so both components
+        # being known-band is expected — skip the weight filter for them.
+        is_verb_adp = "ADP" in c.get("_component_pos", [])
+        if not is_verb_adp and not any(w >= 0.6 for w in weights):
+            continue  # at least one component must be in target or beyond band
         # VERB+NOUN phrases must be in whitelist — dep obj is too noisy otherwise.
         if c["type"] == "verb_phrase" and not in_whitelist:
             score = max(weights)
@@ -398,13 +451,20 @@ def extract_phrases(doc, lang: str, freq: dict[str, int], level: str = "A0") -> 
                 too_generic_phrases.append(c)
                 continue
         score = max(weights)
-        if c["type"] == "verb_phrase":
-            score += 0.05
-        if all(0.3 < w <= 1.0 for w in weights):
-            score += 0.05  # all target-band
+        # VERB+ADP collocations: both components are known-band, but the
+        # combination is the vocabulary item ("talk about", "sit down").
+        # Score based on NPMI strength rather than component frequency.
+        if is_verb_adp and in_whitelist:
+            score = 0.6 + npmi * 0.4  # NPMI 0.5 → 0.80, NPMI 0.3 → 0.72
+        else:
+            if c["type"] == "verb_phrase":
+                score += 0.05
+            if all(0.3 < w <= 1.0 for w in weights):
+                score += 0.05  # all target-band
         # Corpus-backed phrases get an NPMI boost so they compete with singles
-        if npmi is not None and npmi > 0:
-            score *= (1 + npmi)
+        if not is_verb_adp and npmi is not None and npmi > 0:
+            boost_factor = LANG_PRESETS.get(lang, {}).get("collocation_boost", 1.0)
+            score *= (1 + npmi * boost_factor)
         c["score"] = min(score, 1.0)
         scored.append(c)
 
@@ -416,11 +476,12 @@ def extract_phrases(doc, lang: str, freq: dict[str, int], level: str = "A0") -> 
 def _make_phrase(parts: list, ptype: str, source: str, freq: dict[str, int] | None = None) -> dict:
     """Build a phrase candidate dict from a list of Stanza words."""
     components = [_clean_lemma(p.lemma, freq)[0].lower() for p in parts]
-    # Display text: use surface form for ADJ (inflected form is more natural,
-    # e.g. "digitale munt" not "digitaal munt"), lemma for others.
+    # Display text: use surface form for ADJ and compound modifiers
+    # (inflected/gerund forms are more natural: "digitale munt" not "digitaal munt",
+    # "bidding war" not "bid war", "swimming pool" not "swim pool").
     display = []
     for p in parts:
-        if p.upos == "ADJ":
+        if p.upos == "ADJ" or p.deprel == "compound":
             display.append(p.text.lower())
         else:
             display.append(_clean_lemma(p.lemma, freq)[0].lower())
@@ -763,7 +824,7 @@ def extract(doc, lang: str, freq: dict[str, int], level: str = "A0", join_separa
     unique.sort(key=lambda x: x["weight"], reverse=True)
 
     # --- Step 7: Phrase extraction ---
-    phrases, too_generic_phrases = extract_phrases(doc, lang, freq, level)
+    phrases, too_generic_phrases = extract_phrases(doc, lang, freq, level, propn_stems=propn_stems)
 
     # --- Step 8: Merge into unified items list ---
     # Only phrases above threshold swallow their component singles.
