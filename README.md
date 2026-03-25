@@ -50,6 +50,8 @@ Collect NOUN, VERB, ADJ, ADV tokens, then apply heuristics. NUM and PROPN go to 
 
 Phrases are scored using `max(component_weights)` and compete on the same 0–1 scale as singles. Phrases above threshold swallow their component singles to avoid duplication. A dense collocation whitelist (15K bigrams from 105M-line OpenSubtitles corpus, scored with NPMI) boosts phrase quality — corpus-confirmed phrases get `score *= (1 + npmi)`, letting them compete naturally with singles without a hard cap.
 
+**Level-aware phrase filtering** — ADJ rank caps for phrase generic-ness are level-dependent: low at A0/A1 (where adjectives like "important" are still target-band vocabulary and useful in phrases), high at A2/B1 (where they're known-band noise). VERB and NOUN caps remain flat across levels. Collocations whitelist always overrides.
+
 **CEFR frequency ranking** — Each lemma is scored by its rank in a corpus frequency list (SUBTLEX-NL for Dutch, srLex 1.3 for Serbian). Scoring is level-aware with a gradient within the known band:
 
 | Learner level | "Known" band | "Target" band | Effect |
@@ -60,6 +62,8 @@ Phrases are scored using `max(component_weights)` and compete on the same 0–1 
 | B1 | top 3000 | top 8000 | Surface advanced vocab |
 
 Words in the target band score 1.0, beyond/unknown score 0.6. Known-band words score on a gradient (0.05–0.45) based on rank position — words near the target boundary score higher than very common words. Output is sorted by score, filtered at 0.5, capped at 15 items.
+
+**Verb boost** — At higher levels (A2+), common verbs like "keep", "start", "lose" fall into the known band but are still worth teaching. A configurable per-language `verb_boost` (e.g. EN A2: +0.35) is added to verb weights so they can cross the 0.5 threshold when combined with contextual TF-IDF boost. Trivial verbs (be, have, do) stay below threshold even with the boost.
 
 **Contextual TF-IDF boost** — Pure frequency scoring misses known-band words that are topical in the current text (e.g. "bedrijf" at rank ~1200 is filtered as "too common" even when it's the central topic). To recover these, each candidate gets a contextual bonus based on overrepresentation: `bonus = log2(max(1, count × rank / total_tokens)) × 0.15`. Words appearing in the first sentence get an additional +0.1 bonus. This lets contextually important known-band words cross the 0.5 threshold while keeping truly common words (rank < 400) filtered.
 
@@ -124,6 +128,17 @@ uv run --group bench python bench/run.py --lang en
 uv run --group bench python bench/run.py --text en_a2_03 -v  # single text, print judge prompt
 ```
 
+### English
+
+| Level | Pipeline avg | LLM avg | Delta |
+|-------|-------------|---------|-------|
+| A0 | 4.9 | 3.2 | +1.70 |
+| A1 | 4.8 | 3.8 | +1.00 |
+| A2 | 4.5 | 4.4 | +0.10 |
+| **Overall** | **4.7** | **3.8** | **+0.93** |
+
+Cohen's d: 0.80. All levels positive. A2 improved from -0.30 → +0.10 with level-aware ADJ phrase caps and verb boost.
+
 ### Dutch (v7, contextual TF-IDF boost)
 
 | Level | Pipeline avg | LLM avg | Delta |
@@ -132,8 +147,6 @@ uv run --group bench python bench/run.py --text en_a2_03 -v  # single text, prin
 | A1 | 4.5 | 3.1 | +1.40 |
 | A2 | 4.3 | 4.0 | +0.30 |
 | **Overall** | **4.4** | **3.2** | **+1.17** |
-
-All levels positive. A2 improved from -0.30 → +0.30 with contextual TF-IDF boost. Serbian and English benchmarks not yet re-run with v7.
 
 ### Known issues
 
