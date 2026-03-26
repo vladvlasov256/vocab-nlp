@@ -98,8 +98,9 @@ def run_pipeline(text: str, lang: str, level: str, nlp, freq) -> list[str]:
     trimmed = trim_text(text)
     doc = nlp(trimmed)
     result = extract(doc, lang, freq, level=level, join_separable=True)
-    # Filter same as API: weight > 0.5, top 15
-    lemmas = [item["text"] for item in result["items"] if item["score"] > 0.5][:15]
+    # Match LLM baseline counts per level: A0=4, A1=8, A2=12
+    max_items = {"A0": 4, "A1": 8, "A2": 12, "B1": 15}
+    lemmas = [item["text"] for item in result["items"] if item["score"] > 0.5][:max_items.get(level, 15)]
     return lemmas
 
 
