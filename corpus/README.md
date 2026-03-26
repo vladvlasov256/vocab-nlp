@@ -53,12 +53,32 @@ Truncate for testing:
 head -n 1000000 corpus/sr_opensubs_50m.txt > corpus/sr_opensubs_1m.txt
 ```
 
+## Post-processing
+
+Stanza's Serbian lemmatizer produces masculine-singular adjective forms independently of the noun, and often leaves nouns partially inflected. This results in duplicate collocations for the same phrase in different cases (e.g. "kreditan kartica", "kreditan kartice", "kreditan karticu" — 8 variants).
+
+The postprocess script merges these inflected duplicates by grouping on a crude noun stem, sums their counts, and recomputes scores. It also strips subtitle-specific junk ("neprevedeni titl", etc.).
+
+```sh
+uv run python scripts/collocations/postprocess.py --lang sr --dry-run  # preview
+uv run python scripts/collocations/postprocess.py --lang sr            # save to data/collocations_sr_merged.json
+```
+
+After verifying, swap into place:
+
+```sh
+mv data/collocations_sr.json data/collocations_sr_raw.json
+mv data/collocations_sr_merged.json data/collocations_sr.json
+```
+
 ## Processing
 
 Upload to Modal volume and run collocation extraction:
 
 - **Dutch/English** (spaCy + GPU): `modal run scripts/collocations/modal_run.py --lang <lang>`
-- **Serbian** (Stanza + GPU): `modal run scripts/collocations/modal_run_stanza.py --lang sr --corpus sr_opensubs_1m.txt`
+- **Serbian** (Stanza + GPU): `modal run scripts/collocations/modal_run_stanza.py --lang sr --corpus sr_opensubs_50m.txt`
+
+The Stanza script saves checkpoints every 1M lines to the volume. If the container times out or OOMs, re-running the same command resumes from the latest checkpoint.
 
 ```sh
 modal volume put vocab-data corpus/<lang>_opensubs.txt <lang>_opensubs.txt
