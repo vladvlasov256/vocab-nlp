@@ -362,6 +362,10 @@ def extract_phrases(doc, lang: str, freq: dict[str, int], level: str = "A0", pro
                             continue
                         # nmod (NOUN+NOUN genitive) is broad and noisy —
                         # only allow collocation-backed phrases.
+                        # TODO: corpus extraction only captures ADJ+NOUN, VERB+NOUN,
+                        # VERB+ADP — no NOUN+NOUN collocations. "liga šampiona" is
+                        # blocked here. Need NOUN+NOUN collocation extraction or
+                        # manual whitelist entries.
                         if dep.deprel == "nmod":
                             if not collocations:
                                 continue
@@ -505,6 +509,10 @@ def _make_phrase(parts: list, ptype: str, source: str, freq: dict[str, int] | No
     # dependents (genitive nouns: "liga šampiona" not "liga šampion").
     # ADJ surface gives natural forms: "digitale munt" not "digitaal munt",
     # "bidding war" not "bid war", "swimming pool" not "swim pool".
+    # TODO: SR ADJ surface shows inflected case ("veštačke inteligencije"
+    # instead of "veštačka inteligencija"). NL is fine because Dutch ADJ
+    # attributive form is consistent. Fix needs nominative case detection
+    # from Stanza feats or SR-specific lemma form for ADJ.
     display = []
     for p in parts:
         if p.upos == "ADJ" or p.deprel in ("compound", "nmod"):
