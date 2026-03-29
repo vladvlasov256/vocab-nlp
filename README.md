@@ -7,7 +7,7 @@ sdk: gradio
 
 Multilingual NLP microservice that extracts vocabulary candidates from short texts. Built for language learning apps targeting A0-B1 learners.
 
-> Deterministic, fast, and cheaper than pure LLM extraction. Beats GPT vocab picking by Cohen's d = 1.97 on a 30-text Dutch benchmark.
+> Deterministic, fast, and cheaper than pure LLM extraction. Matches LLM vocab picking quality (Cohen's d ≈ 0.1–0.2) while winning at A1/A2 levels.
 
 ![CLI screenshot](docs/cli.png)
 
@@ -113,32 +113,32 @@ uv run --group bench python bench/run.py --lang en
 uv run --group bench python bench/run.py --text en_a2_03 -v  # single text, print judge prompt
 ```
 
-### Dutch — Cohen's d = 1.52
+### Dutch — Cohen's d = 0.19
 
 | Level | Pipeline avg | LLM avg | Delta |
 |-------|-------------|---------|-------|
-| A0 | 4.4 | 2.2 | +2.20 |
-| A1 | 4.6 | 3.1 | +1.50 |
-| A2 | 4.5 | 3.6 | +0.90 |
-| **Overall** | **4.5** | **3.0** | **+1.53** |
+| A0 | 3.4 | 4.0 | -0.60 |
+| A1 | 4.1 | 3.3 | +0.80 |
+| A2 | 4.1 | 3.7 | +0.40 |
+| **Overall** | **3.9** | **3.7** | **+0.20** |
 
-### Serbian — Cohen's d = 1.59
-
-| Level | Pipeline avg | LLM avg | Delta |
-|-------|-------------|---------|-------|
-| A0 | 4.8 | 2.6 | +2.20 |
-| A1 | 4.8 | 2.8 | +2.00 |
-| A2 | 4.3 | 3.7 | +0.60 |
-| **Overall** | **4.6** | **3.0** | **+1.60** |
-
-### English — Cohen's d = 1.51
+### Serbian — Cohen's d = 0.10
 
 | Level | Pipeline avg | LLM avg | Delta |
 |-------|-------------|---------|-------|
-| A0 | 4.9 | 2.7 | +2.20 |
-| A1 | 4.4 | 3.0 | +1.40 |
-| A2 | 4.6 | 3.8 | +0.80 |
-| **Overall** | **4.6** | **3.2** | **+1.47** |
+| A0 | 3.8 | 4.2 | -0.40 |
+| A1 | 4.3 | 3.7 | +0.60 |
+| A2 | 4.1 | 4.0 | +0.10 |
+| **Overall** | **4.1** | **4.0** | **+0.10** |
+
+### English — Cohen's d = 0.10
+
+| Level | Pipeline avg | LLM avg | Delta |
+|-------|-------------|---------|-------|
+| A0 | 3.4 | 3.8 | -0.40 |
+| A1 | 4.2 | 3.7 | +0.50 |
+| A2 | 4.2 | 4.0 | +0.20 |
+| **Overall** | **3.9** | **3.8** | **+0.10** |
 
 ### Known issues
 
