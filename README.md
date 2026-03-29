@@ -119,7 +119,7 @@ Displays panels: **Candidates** (above threshold), **Filtered out** (below thres
 
 ## Benchmark
 
-30 texts per language (10 per level: A0, A1, A2) evaluated by GPT-5 as blind judge. Pipeline vocab list vs LLM baseline, scored 1-5 on relevance, coverage, and noise.
+30 texts per language (10 per level: A0, A1, A2) evaluated by GPT-5 as blind judge. Pipeline vocab list vs LLM baseline (clipped to LLM counts: A0=4, A1=8, A2=12), scored 1-5 on relevance, coverage, and noise.
 
 ```bash
 uv run --group bench python bench/run.py --lang nl
@@ -128,31 +128,44 @@ uv run --group bench python bench/run.py --lang en
 uv run --group bench python bench/run.py --text en_a2_03 -v  # single text, print judge prompt
 ```
 
+### Serbian
+
+| Level | Pipeline avg | LLM avg | Delta |
+|-------|-------------|---------|-------|
+| A0 | 3.8 | 4.6 | -0.80 |
+| A1 | 4.2 | 4.7 | -0.50 |
+| A2 | 4.0 | 4.9 | -0.90 |
+| **Overall** | **4.0** | **4.7** | **-0.73** |
+
+Cohen's d: -1.26. LLM wins at all levels. A1 closest (-0.50).
+
 ### English
 
 | Level | Pipeline avg | LLM avg | Delta |
 |-------|-------------|---------|-------|
-| A0 | 4.8 | 2.9 | +1.90 |
-| A1 | 4.7 | 3.9 | +0.80 |
-| A2 | 4.5 | 4.2 | +0.30 |
-| **Overall** | **4.7** | **3.7** | **+1.00** |
+| A0 | 3.7 | 4.0 | -0.30 |
+| A1 | 4.3 | 4.4 | -0.10 |
+| A2 | 4.0 | 4.7 | -0.70 |
+| **Overall** | **4.0** | **4.4** | **-0.37** |
 
-Cohen's d: 0.87. All levels positive.
+Cohen's d: -0.41. A1 nearly tied (-0.10).
 
 ### Dutch
 
 | Level | Pipeline avg | LLM avg | Delta |
 |-------|-------------|---------|-------|
-| A0 | 4.9 | 2.9 | +2.00 |
-| A1 | 4.9 | 3.5 | +1.40 |
-| A2 | 4.5 | 4.3 | +0.20 |
-| **Overall** | **4.8** | **3.6** | **+1.20** |
+| A0 | 4.0 | 4.0 | +0.00 |
+| A1 | 4.0 | 4.4 | -0.40 |
+| A2 | 4.1 | 4.8 | -0.70 |
+| **Overall** | **4.0** | **4.4** | **-0.37** |
 
-Cohen's d: 1.07. All levels positive.
+Cohen's d: -0.37. A0 tied, A1/A2 LLM wins.
 
 ### Known issues
 
-**A2 remaining losses (-1 on 3/10 texts):** nl_a2_01 and nl_a2_02 lose on multi-word beyond-frequency terms (crypto-industrie, blockchain-netwerk, kunstmatige intelligentie) that the pipeline structurally can't reach. nl_a2_08 loses on known-band words crowded out of top-15 by target-band words.
+**LLM wins on phrases:** The LLM baseline is heavily phrase-oriented ("poreska politika", "veštačka inteligencija", "liga šampiona"). The pipeline now extracts some phrases (ADJ+NOUN, VERB+ADP, reflexive verbs) but still misses trigrams ("briga za sebe") and NOUN+NOUN without collocation backing ("liga šampiona").
+
+**SR ADJ display forms:** ADJ+NOUN phrases show inflected case forms ("veštačke inteligencije" instead of "veštačka inteligencija") because Stanza surface forms vary by case.
 
 **Dutch:**
 - **"vroeger" lemmatized as "vroeg"** — Stanza and Wiktionary both treat "vroeger" as the comparative of "vroeg" (early), but in most contexts it's a separate word meaning "formerly." No clean fix without word-sense disambiguation.

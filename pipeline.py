@@ -23,8 +23,8 @@ LANG_PRESETS = {
         "collocation_min_npmi": 0.0,
         "collocation_boost": 1.0,
         "levels": {
-            "A0": {"band": {"known": 0,     "target": 1000},  "adv_weight": 0.7, "max_phrases": 3, "threshold": 0.5},
-            "A1": {"band": {"known": 500,   "target": 3000},  "adv_weight": 0.7, "max_phrases": 3, "threshold": 0.5},
+            "A0": {"band": {"known": 100,   "target": 1000},  "adv_weight": 0.7, "max_phrases": 3, "threshold": 0.5, "verb_boost": 0.3},
+            "A1": {"band": {"known": 500,   "target": 3000},  "adv_weight": 0.7, "max_phrases": 3, "threshold": 0.5, "verb_boost": 0.2},
             "A2": {"band": {"known": 1500,  "target": 5000},  "adv_weight": 1.0, "max_phrases": 3, "threshold": 0.5},
             "B1": {"band": {"known": 3000,  "target": 8000},  "adv_weight": 1.0, "max_phrases": 3, "threshold": 0.5},
         },
@@ -37,8 +37,8 @@ LANG_PRESETS = {
         "collocation_min_npmi": 0.0,
         "collocation_boost": 1.0,
         "levels": {
-            "A0": {"band": {"known": 0,     "target": 1500},  "adv_weight": 0.7, "max_phrases": 3, "threshold": 0.5},
-            "A1": {"band": {"known": 200,   "target": 3000},  "adv_weight": 0.7, "max_phrases": 3, "threshold": 0.5},
+            "A0": {"band": {"known": 30,    "target": 1500},  "adv_weight": 0.7, "max_phrases": 3, "threshold": 0.5, "verb_boost": 0.3},
+            "A1": {"band": {"known": 200,   "target": 3000},  "adv_weight": 0.7, "max_phrases": 3, "threshold": 0.5, "verb_boost": 0.2},
             "A2": {"band": {"known": 500,   "target": 5000},  "adv_weight": 1.0, "max_phrases": 2, "threshold": 0.5},
             "B1": {"band": {"known": 2000,  "target": 8000},  "adv_weight": 1.0, "max_phrases": 3, "threshold": 0.5},
         },
@@ -51,8 +51,8 @@ LANG_PRESETS = {
         "collocation_min_npmi": 0.15,
         "collocation_boost": 0.5,
         "levels": {
-            "A0": {"band": {"known": 0,     "target": 1000},  "adv_weight": 0.7, "max_phrases": 3, "threshold": 0.5},
-            "A1": {"band": {"known": 300,   "target": 3000},  "adv_weight": 0.7, "max_phrases": 3, "threshold": 0.5},
+            "A0": {"band": {"known": 100,   "target": 1000},  "adv_weight": 0.7, "max_phrases": 3, "threshold": 0.5, "verb_boost": 0.3},
+            "A1": {"band": {"known": 300,   "target": 3000},  "adv_weight": 0.7, "max_phrases": 3, "threshold": 0.5, "verb_boost": 0.2},
             "A2": {"band": {"known": 800,   "target": 5000},  "adv_weight": 1.0, "max_phrases": 2, "threshold": 0.5, "verb_boost": 0.35},
             "B1": {"band": {"known": 1500,  "target": 8000},  "adv_weight": 1.0, "max_phrases": 3, "threshold": 0.5, "verb_boost": 0.25},
         },
@@ -329,7 +329,7 @@ _PHRASE_BIGRAMS = {
     ("VERB", "ADP"): "verb_phrase",
 }
 
-_DEP_NOUN_RELS = {"amod", "compound"}
+_DEP_NOUN_RELS = {"amod", "compound", "nmod"}
 _DEP_VERB_RELS = {"obj"}
 
 
@@ -360,6 +360,15 @@ def extract_phrases(doc, lang: str, freq: dict[str, int], level: str = "A0", pro
                         # e.g. "Ierse", "Nederlandse") — not useful phrase components.
                         if dep.upos == "ADJ" and dep.text[0:1].isupper():
                             continue
+                        # nmod (NOUN+NOUN genitive) is broad and noisy —
+                        # only allow collocation-backed phrases.
+                        if dep.deprel == "nmod":
+                            if not collocations:
+                                continue
+                            parts_sorted = sorted([dep, word], key=lambda w: w.id)
+                            key = " ".join(_clean_lemma(p.lemma, freq)[0].lower() for p in parts_sorted)
+                            if key not in collocations:
+                                continue
                         parts = sorted([dep, word], key=lambda w: w.id)
                         candidates.append(_make_phrase(parts, "noun_phrase", "dep", freq))
 
@@ -389,12 +398,14 @@ def extract_phrases(doc, lang: str, freq: dict[str, int], level: str = "A0", pro
                 if w2.upos in ("VERB", "NOUN", "PROPN"):
                     break  # stop if we hit another content word
 
-    # --- Deduplicate by lemma-normalized text ---
+    # --- Deduplicate by component lemmas (not display text) ---
+    # "liga šampiona" and "lige šampiona" are the same phrase in different cases.
     seen = set()
     unique = []
     for c in candidates:
-        if c["text"] not in seen:
-            seen.add(c["text"])
+        key = " ".join(c["_components"])
+        if key not in seen:
+            seen.add(key)
             unique.append(c)
 
     # --- Filter: both components must be in freq list ---
@@ -413,6 +424,19 @@ def extract_phrases(doc, lang: str, freq: dict[str, int], level: str = "A0", pro
         for a, b in [(c["_components"][0], c["_components"][1])]
     )]
 
+    # --- Filter: limit phrases sharing a component word ---
+    # Prevents spam like "trading platform", "trading bots", "trading choice"
+    # all dominating the list. Keep at most 2 phrases per shared component.
+    _comp_counts: dict[str, int] = {}
+    _capped = []
+    for c in unique:
+        comps = c["_components"]
+        if all(_comp_counts.get(w, 0) < 2 for w in comps):
+            _capped.append(c)
+            for w in comps:
+                _comp_counts[w] = _comp_counts.get(w, 0) + 1
+    unique = _capped
+
     # --- Score: max(component_weights) + adjustments ---
     collocations = get_collocations(lang)
     scored = []
@@ -428,7 +452,7 @@ def extract_phrases(doc, lang: str, freq: dict[str, int], level: str = "A0", pro
         if not is_verb_adp and not any(w >= 0.6 for w in weights):
             continue  # at least one component must be in target or beyond band
         # VERB+NOUN phrases must be in whitelist — dep obj is too noisy otherwise.
-        if c["type"] == "verb_phrase" and not in_whitelist:
+        if c["type"] == "verb_phrase" and not is_verb_adp and not in_whitelist:
             score = max(weights)
             c["score"] = min(score, 1.0)
             too_generic_phrases.append(c)
@@ -466,6 +490,7 @@ def extract_phrases(doc, lang: str, freq: dict[str, int], level: str = "A0", pro
             boost_factor = LANG_PRESETS.get(lang, {}).get("collocation_boost", 1.0)
             score *= (1 + npmi * boost_factor)
         c["score"] = min(score, 1.0)
+        c["_colloc_backed"] = in_whitelist
         scored.append(c)
 
     scored.sort(key=lambda c: c["score"], reverse=True)
@@ -476,12 +501,13 @@ def extract_phrases(doc, lang: str, freq: dict[str, int], level: str = "A0", pro
 def _make_phrase(parts: list, ptype: str, source: str, freq: dict[str, int] | None = None) -> dict:
     """Build a phrase candidate dict from a list of Stanza words."""
     components = [_clean_lemma(p.lemma, freq)[0].lower() for p in parts]
-    # Display text: use surface form for ADJ and compound modifiers
-    # (inflected/gerund forms are more natural: "digitale munt" not "digitaal munt",
-    # "bidding war" not "bid war", "swimming pool" not "swim pool").
+    # Display text: use surface form for ADJ, compound modifiers, and nmod
+    # dependents (genitive nouns: "liga šampiona" not "liga šampion").
+    # ADJ surface gives natural forms: "digitale munt" not "digitaal munt",
+    # "bidding war" not "bid war", "swimming pool" not "swim pool".
     display = []
     for p in parts:
-        if p.upos == "ADJ" or p.deprel == "compound":
+        if p.upos == "ADJ" or p.deprel in ("compound", "nmod"):
             display.append(p.text.lower())
         else:
             display.append(_clean_lemma(p.lemma, freq)[0].lower())
@@ -653,6 +679,15 @@ def extract(doc, lang: str, freq: dict[str, int], level: str = "A0", join_separa
                 item = {"text": word.lemma, "pos": word.upos, "_surface": word.text, "_sent_initial": word.id == 1, "_sent_idx": sent_idx}
                 if word.upos == "VERB":
                     item["_verb_id"] = word.id
+                    # SR reflexive verbs: "boriti se", "menjati se" — flag for
+                    # display after scoring (keep plain lemma for freq lookup).
+                    if lang == "sr":
+                        has_se = any(
+                            w.head == word.id and w.deprel == "expl" and w.lemma == "sebe"
+                            for w in sent.words
+                        )
+                        if has_se:
+                            item["_reflexive"] = True
                 candidates.append(item)
             elif word.upos not in _DROPPED_POS:
                 logging.getLogger("pipeline").warning(f"Unhandled POS: {word.upos} for '{word.text}'")
@@ -818,10 +853,25 @@ def extract(doc, lang: str, freq: dict[str, int], level: str = "A0", join_separa
             weight = weight + contextual_bonus
         elif count > 1:
             weight = weight * count
-        item["weight"] = min(weight, 1.0)
+        item["weight"] = min(weight, 1.0)  # capped, for output score
         item["in_target"] = rank is not None and band["known"] < rank <= band["target"]
+        # Sort key: weight + count-based tiebreaker using log(rank) instead
+        # of raw rank. This compresses the rarity advantage so "wedstrijd"
+        # (rank 1022, 2x) can outrank "kwartfinale" (rank 76k, 1x).
+        if rank is not None and rank > 0:
+            sort_bonus = count * math.log2(max(2, rank)) * 0.02
+        else:
+            sort_bonus = count * 0.1
+        if in_first_sent:
+            sort_bonus += 0.1
+        item["_sort_key"] = item["weight"] + sort_bonus
 
-    unique.sort(key=lambda x: x["weight"], reverse=True)
+    unique.sort(key=lambda x: x["_sort_key"], reverse=True)
+
+    # Append "se" to SR reflexive verbs after scoring (freq lookup used plain lemma).
+    for item in unique:
+        if item.pop("_reflexive", False):
+            item["text"] = item["text"] + " se"
 
     # --- Step 7: Phrase extraction ---
     phrases, too_generic_phrases = extract_phrases(doc, lang, freq, level, propn_stems=propn_stems)
@@ -835,6 +885,20 @@ def extract(doc, lang: str, freq: dict[str, int], level: str = "A0", join_separa
 
     # No hard cap — corpus-boosted scores let phrases compete with singles naturally
     accepted_phrases = [p for p in phrases if p["score"] > _THRESHOLD]
+
+    # Build a map of component → best sort_key so phrases can inherit ranking.
+    component_sort_keys: dict[str, float] = {}
+    for item in unique:
+        component_sort_keys[item["text"].lower()] = item["_sort_key"]
+
+    # Assign phrase sort keys before popping _components.
+    # Phrases inherit the best component sort_key (since they swallow those singles).
+    for p in accepted_phrases:
+        if "_sort_key" not in p:
+            comp_keys = [component_sort_keys.get(c, 0) for c in p.get("_components", [])]
+            base = max(comp_keys) if comp_keys else p["score"]
+            boost = 0.2 if p.get("_colloc_backed") else 0.05
+            p["_sort_key"] = base + boost
 
     # Only swallow components of accepted phrases
     phrase_components = set()
@@ -852,6 +916,7 @@ def extract(doc, lang: str, freq: dict[str, int], level: str = "A0", join_separa
             "surface": item["text"],
             "type": "single",
             "score": item["weight"],
+            "_sort_key": item["_sort_key"],
             "pos": item["pos"],
             "rank": item["rank"],
             "in_target": item["in_target"],
@@ -859,7 +924,10 @@ def extract(doc, lang: str, freq: dict[str, int], level: str = "A0", join_separa
     for p in accepted_phrases:
         items.append(p)
 
-    items.sort(key=lambda x: x["score"], reverse=True)
+    items.sort(key=lambda x: x["_sort_key"], reverse=True)
+    for item in items:
+        item.pop("_sort_key", None)
+        item.pop("_colloc_backed", None)
 
     # Deduplicate proper nouns
     seen_propn = set()

@@ -119,13 +119,20 @@ def judge(client: OpenAI, text: str, lang: str, level: str, pipeline_lemmas: lis
         lang_hints=lang_hints,
     )
     logging.getLogger("bench").info(f"\n{'='*60}\nJUDGE PROMPT for {level} text:\n{'='*60}\n{prompt}\n{'='*60}")
-    response = client.chat.completions.create(
-        model=JUDGE_MODEL,
-        messages=[{"role": "user", "content": prompt}],
-        temperature=1,  # gpt-5 only supports temperature=1
-    )
-    content = response.choices[0].message.content.strip()
-    return json.loads(content)
+    for attempt in range(3):
+        try:
+            response = client.chat.completions.create(
+                model=JUDGE_MODEL,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=1,  # gpt-5 only supports temperature=1
+            )
+            content = response.choices[0].message.content.strip()
+            return json.loads(content)
+        except (json.JSONDecodeError, Exception) as e:
+            if attempt == 2:
+                raise
+            logging.getLogger("bench").warning(f"Retry {attempt+1}: {e}")
+            import time; time.sleep(2)
 
 
 def main():

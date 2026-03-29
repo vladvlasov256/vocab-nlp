@@ -3,7 +3,7 @@
 Bench clips to LLM counts: A0=4, A1=8, A2=12, B1=15.
 API unchanged (MAX_LEMMAS=15).
 
-## Results
+## Results (pre-fix baseline)
 
 | Lang | A0    | A1    | A2    | Overall | Cohen's d |
 |------|-------|-------|-------|---------|-----------|
@@ -13,69 +13,38 @@ API unchanged (MAX_LEMMAS=15).
 
 LLM wins everywhere. Pipeline never positive at any level/language combination.
 
-NL/EN: A0 worst, A2 best (more slots = more room for error).
-SR: reversed — A2 worst (-1.10), A0/A1 best. LLM scored 5.0 on all 10 SR A2 texts.
-
-## Why SR A2 is worst
-
-The SR LLM baseline is heavily phrase-oriented. Nearly every SR A2 text has 3-4 multi-word picks: "poreska politika", "veštačka inteligencija", "liga šampiona", "ukočen vrat", "širiti poruku", "briga za sebe", "pasivan prihod", "preko granica". Pipeline extracts almost none of these — they're either not in the collocation whitelist, not matching extraction patterns, or losing to single words in scoring.
-
-NL/EN LLM baselines are more single-word focused, so the gap is smaller at A2.
-
-## Problem 1: Filler words stealing slots (A0, all langs)
-
-Top-50 words like "have/be/person" (EN), "mens/hebben/zeggen" (NL), "kazati/imati/čovek" (SR) score just above 0.5 via contextual boost and take slots from domain words.
-
-- en_a0_05: "be, week, team, help" vs LLM "game, team, play, final"
-- nl_a0_09: "zeggen, mens, ziek, hebben" vs LLM "ziekte, pijn, koorts, oppletten"
-- sr_a0_10: "kazati, imati, čovek, meningitis" vs LLM "meningitis, bol u glavi, crvena tačka, upozoravati na"
-
-**Fix:** Raise A0 known-band so these drop below threshold.
-
-## Problem 2: LLM picks phrases, pipeline picks singles (all levels, worst at SR A2)
-
-LLM sends multi-word units. Pipeline splits them into separate words or doesn't extract them at all.
-
-SR A2 examples — LLM picks vs what pipeline sends:
-- "poreska politika" → pipeline sends "poreski" (adj alone)
-- "veštačka inteligencija" → pipeline has it but it loses to single words
-- "liga šampiona" → not extractable (NOUN+NOUN, not ADJ+NOUN)
-- "ukočen vrat" → not in collocation whitelist
-- "širiti poruku" → not in whitelist (VERB+NOUN but no dep match)
-- "briga za sebe" → trigram, can't extract
-
-**Fix:**
-- [ ] Add NOUN+NOUN extraction pattern
-- [ ] Raise max_phrases cap (currently 2-3)
-- [ ] Phrases should rank above singles when collocation-backed
-- [ ] SR reflexive verbs ("boriti se", "nastavljati se")
-
-## Problem 3: Verbs underweighted (A0/A1)
-
-LLM picks action verbs (werken, spelen, raditi, pomoći). Pipeline drops them for nouns.
-
-- sr_a0_07: Pipeline "velik, svetski, lider, nauka" vs LLM "raditi, grupa, pomoći, istraživač"
-- nl_a0_06: Pipeline misses "werken", "praten"
-- en_a0_05: Pipeline misses "play"
-
-**Fix:** Verb boost at A0/A1.
-
-## Problem 4: No differentiation within target band
-
-All target-band words score 1.0. TF-IDF bonus exists but capped at 1.0. With 4-12 slots, which words make the cut is arbitrary among equals.
-
-**Fix:** Uncap weight for sort order, keep 0.5 threshold for filtering.
-
-## Action plan (priority order)
+## Action plan — status
 
 ### Quick scoring tweaks
-1. [ ] Raise A0 known-band to suppress filler (NL 0→200, EN 0→150, SR 0→100)
-2. [ ] Uncap weight for ranking (keep 0.5 threshold, let contextual bonus create gradient)
-3. [ ] Verb boost at A0/A1 for all languages
+1. [x] Raise A0 known-band to suppress filler (NL 0→100, EN 0→100, SR 0→30)
+2. [x] Log-rank sort bonus for ranking (count × log₂(rank) × 0.02), capped weight for output
+3. [x] Verb boost at A0/A1 for all languages
 
 ### Phrase extraction improvements
-4. [ ] Raise/remove max_phrases cap
-5. [ ] Add NOUN+NOUN phrase pattern (for "liga šampiona" type)
-6. [ ] Collocation-backed phrases rank above singles
-7. [ ] SR reflexive verb handling ("boriti se")
-8. [ ] Relax whitelist gate for VERB+NOUN at A2 (currently requires whitelist match)
+4. [x] max_phrases cap removed (was dead config, never enforced)
+5. [x] NOUN+NOUN via nmod deprel — collocation-gated to avoid noise
+6. [x] Phrases inherit component sort_key + boost (colloc-backed +0.2, others +0.05)
+7. [x] SR reflexive verbs: "boriti se", "menjati se", "oporaviti se" etc. — detected via expl(sebe) dependent, appended after freq scoring
+8. [x] VERB+NOUN whitelist gate kept at all levels (A2 relaxation tested → too noisy, reverted)
+
+### Additional fixes applied
+- Phrase dedup by component lemmas (not display text) — prevents "liga šampiona"/"lige šampiona" duplicates
+- nmod display: surface form for genitive dependent ("liga šampiona" not "liga šampion")
+- Compound spam cap: max 2 phrases sharing any component word
+- Phrase component inheritance: phrases inherit best-component sort_key so they don't lose to singles they swallow
+
+## Remaining issues
+
+### "mens" filler in NL
+"mens" (rank 597) still appears in 4/10 NL texts. At A2 it's known-band (0.5 weight) but still makes the cut via sort bonus. At A0 it's target-band (rank 597 > known=100). LLM never picks it.
+
+### SR ADJ display forms
+ADJ+NOUN phrases use surface form for ADJ, which shows inflected case instead of citation form. "veštačke inteligencije" instead of "veštačka inteligencija". NL doesn't have this problem because Dutch ADJ attributive form is consistent.
+
+### Missing phrases without collocation backing
+- "liga šampiona" — NOUN+NOUN (nmod) not in collocation whitelist (corpus extraction only captured ADJ+NOUN, VERB+NOUN, VERB+ADP). Need NOUN+NOUN collocation extraction or manual whitelist.
+- "briga za sebe" — trigram, can't extract with bigram-only phrase system
+- "širiti poruku" — VERB+NOUN without dep match in text
+
+### EN compound diversity
+Even with the 2-per-component cap, EN compound phrases can dominate at A0 (4 slots). "play game", "football game" take 2/4 slots. Not necessarily wrong but different from LLM style.
